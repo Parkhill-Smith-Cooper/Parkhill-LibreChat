@@ -1,0 +1,91 @@
+name: Parkhill - Deploy to Azure
+
+# Deploys the Parkhill LibreChat fork to Azure Container Apps on a version tag.
+# Trigger: push a tag like v1.2.3  (see RELEASE.md for the full process).
+#
+# Auth: GitHub OIDC -> Azure managed identity `id-librechat-cicd` (no stored
+# credentials). The `production` environment name below MUST match the identity's
+# federated-credential subject (repo:<org>/<repo>:environment:production).
+#
+# What it does, in order:
+#   1. Build the image in ACR (cloud build) tagged with the version + latest
+#   2. Upload librechat.yaml to the Azure Files share
+#   3. Point the Container App at the new image (rolls a new revision, which
+#      re-reads the updated librechat.yaml)
+#
+# NOTE: app secrets/env vars are NOT managed here (they aren't in the repo, by
+# design). See RELEASE.md -> "Updating secrets / env vars" for that manual step.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to build/deploy (e.g. v1.2.3). Defaults to the git ref.'
+        required: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  ACR_NAME: parkhilllibrechat
+  IMAGE_REPO: librechat
+  RESOURCE_GROUP: rg-librechat
+  CONTAINER_APP: ca-librechat
+  STORAGE_ACCOUNT: stlibrechatmx31a9
+  CONFIG_SHARE: config
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write # required for OIDC login to Azure
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version tag
+        id: ver
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build & push image in ACR
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "$IMAGE_REPO:${{ steps.ver.outputs.tag }}" \
+            --image "$IMAGE_REPO:latest" \
+            --file Dockerfile .
+
+      - name: Upload librechat.yaml to Azure Files share
+        run: |
+          KEY=$(az storage account keys list -g "$RESOURCE_GROUP" --account-name "$STORAGE_ACCOUNT" --query "[0].value" -o tsv)
+          az storage file upload \
+            --account-name "$STORAGE_ACCOUNT" \
+            --account-key "$KEY" \
+            --share-name "$CONFIG_SHARE" \
+            --source librechat.yaml
+
+      - name: Deploy new image to Container App
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$ACR_NAME.azurecr.io/$IMAGE_REPO:${{ steps.ver.outputs.tag }}"
+
+      - name: Output app URL
+        run: |
+          FQDN=$(az containerapp show -n "$CONTAINER_APP" -g "$RESOURCE_GROUP" --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "Deployed ${{ steps.ver.outputs.tag }} -> https://$FQDN" >> "$GITHUB_STEP_SUMMARY"
