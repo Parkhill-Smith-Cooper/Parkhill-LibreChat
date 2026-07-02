@@ -83,6 +83,7 @@ jobs:
           az containerapp update \
             --name "$CONTAINER_APP" \
             --resource-group "$RESOURCE_GROUP" \
+            --container-name api \
             --image "$ACR_NAME.azurecr.io/$IMAGE_REPO:${{ steps.ver.outputs.tag }}"
 
       - name: Output app URL
