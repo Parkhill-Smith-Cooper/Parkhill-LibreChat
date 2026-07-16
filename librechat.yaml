@@ -395,14 +395,14 @@ actions:
 
 # MCP servers (Parkhill) — tools become available to Agents
 mcpServers:
-  filesystem:
-    type: stdio
-    command: npx
-    args:
-      - -y
-      - "@modelcontextprotocol/server-filesystem"
-      - /app/uploads
-    timeout: 60000
+  # filesystem:
+  #   type: stdio
+  #   command: npx
+  #   args:
+  #     - -y
+  #     - "@modelcontextprotocol/server-filesystem"
+  #     - /app/uploads
+  #   timeout: 60000
   parkhill-docs:
     type: stdio
     command: npx
@@ -422,6 +422,13 @@ mcpServers:
     headers:
       x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
     timeout: 120000
+  elastic-observability:
+    type: streamable-http
+    url: "https://bimbeats.kb.southcentralus.azure.elastic-cloud.com/api/agent_builder/mcp"
+    headers:
+      Authorization: "ApiKey ${ELASTIC_MCP_API_KEY}"
+    requiresOAuth: false
+    timeout: 60000
 
 # Definition of custom endpoints
 endpoints:
