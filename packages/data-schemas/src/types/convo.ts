@@ -39,7 +39,11 @@ export interface IConversation extends Document {
   instructions?: string;
   stop?: string[];
   isArchived?: boolean;
+  /** Set when archived, cleared on unarchive; absent on chats archived before it existed. */
+  archivedAt?: Date | null;
   pinned?: boolean;
+  /** Derived per request from the shared-links collection; never persisted on the conversation. */
+  isShared?: boolean;
   iconURL?: string;
   greeting?: string;
   spec?: string;
@@ -50,6 +54,8 @@ export interface IConversation extends Document {
   max_tokens?: number;
   reasoning_effort?: string;
   reasoning_summary?: string;
+  reasoning_mode?: string;
+  reasoning_context?: string;
   verbosity?: string;
   useResponsesApi?: boolean;
   web_search?: boolean;

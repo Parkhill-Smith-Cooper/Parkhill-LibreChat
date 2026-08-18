@@ -175,6 +175,30 @@ describe('createEndpointsConfigService', () => {
       expect(result?.[EModelEndpoint.agents]?.allowedProviders).toEqual(['openAI', 'anthropic']);
     });
 
+    it('exposes the deployment stateful environment allowlist', async () => {
+      const deps = createMockDeps({
+        loadDefaultEndpointsConfig: jest.fn().mockResolvedValue({
+          [EModelEndpoint.agents]: { userProvide: false, order: 0 },
+        }),
+        getAppConfig: jest.fn().mockResolvedValue(
+          appConfig({
+            endpoints: {
+              [EModelEndpoint.agents]: {
+                statefulCodeSessions: { allowedEnvironments: ['user', 'agent-user'] },
+              },
+            },
+          }),
+        ),
+      });
+      const { getEndpointsConfig } = createEndpointsConfigService(deps);
+
+      const result = await getEndpointsConfig(fakeReq());
+
+      expect(result?.[EModelEndpoint.agents]?.statefulCodeSessions).toEqual({
+        allowedEnvironments: ['user', 'agent-user'],
+      });
+    });
+
     it('merges bedrock availableRegions', async () => {
       const deps = createMockDeps({
         loadDefaultEndpointsConfig: jest.fn().mockResolvedValue({
@@ -258,6 +282,7 @@ describe('createEndpointsConfigService', () => {
       expect(mockGetAppConfig).toHaveBeenCalledWith({
         role: 'USER',
         userId: 'u1',
+        idOnTheSource: undefined,
         tenantId: 'tenant-a',
       });
     });
@@ -314,7 +339,10 @@ describe('createEndpointsConfigService', () => {
 
       const result = await getEndpointsConfig(fakeReq({ user: { id: 'u1', role: 'USER' } }));
 
-      expect(getUserPrincipals).toHaveBeenCalledWith({ userId: 'u1', role: 'USER' });
+      expect(getUserPrincipals).toHaveBeenCalledWith({
+        userId: 'u1',
+        role: 'USER',
+      });
       expect(getApplicableConfigs).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ principalType: PrincipalType.GROUP, principalId: groupId }),
