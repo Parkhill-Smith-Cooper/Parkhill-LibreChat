@@ -3,6 +3,13 @@ const { SystemRoles } = require('librechat-data-provider');
 // --- Capture JwtStrategy inputs ---
 let capturedStrategyOptions;
 let capturedVerifyCallback;
+const mockAuthUserDocCacheStore = {
+  get: jest.fn(),
+  set: jest.fn(),
+  delete: jest.fn(),
+};
+const mockGetLogStores = jest.fn(() => mockAuthUserDocCacheStore);
+const mockGetTenantId = jest.fn();
 jest.mock('passport-jwt', () => ({
   Strategy: jest.fn((opts, verifyCallback) => {
     capturedStrategyOptions = opts;
@@ -21,6 +28,7 @@ jest.mock('https-proxy-agent', () => ({
 }));
 jest.mock('@librechat/data-schemas', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
+  getTenantId: mockGetTenantId,
 }));
 jest.mock('@librechat/api', () => ({
   isEnabled: jest.fn(() => false),
@@ -28,6 +36,12 @@ jest.mock('@librechat/api', () => ({
   getOpenIdEmail: jest.requireActual('@librechat/api').getOpenIdEmail,
   getOpenIdIssuer: jest.fn(() => 'https://issuer.example.com'),
   normalizeOpenIdIssuer: jest.requireActual('@librechat/api').normalizeOpenIdIssuer,
+  buildAuthUserDocCacheKey: jest.fn(() => 'auth-user-doc-key'),
+  getAuthUserDocCacheMode: jest.fn(() => 'off'),
+  getCachedAuthUserDoc: jest.fn(),
+  getValidOpenIdReuseUserId: jest.fn(),
+  invalidateCachedAuthUserDoc: jest.fn(),
+  setCachedAuthUserDoc: jest.fn(),
   getHttpsProxyAgent: jest.fn(() => undefined),
   math: jest.fn((val, fallback) => fallback),
 }));
@@ -43,13 +57,37 @@ jest.mock('~/server/services/Files/strategies', () => ({
 jest.mock('~/server/services/Config', () => ({
   getAppConfig: jest.fn().mockResolvedValue({}),
 }));
-jest.mock('~/cache/getLogStores', () =>
-  jest.fn().mockReturnValue({ get: jest.fn(), set: jest.fn() }),
-);
+jest.mock('~/cache/getLogStores', () => mockGetLogStores);
 
-const { findOpenIDUser } = require('@librechat/api');
+const {
+  buildAuthUserDocCacheKey,
+  findOpenIDUser,
+  getAuthUserDocCacheMode,
+  getCachedAuthUserDoc,
+  getValidOpenIdReuseUserId,
+  invalidateCachedAuthUserDoc,
+  setCachedAuthUserDoc,
+} = require('@librechat/api');
 const openIdJwtLogin = require('./openIdJwtStrategy');
 const { findUser, updateUser } = require('~/models');
+
+function resetAuthUserDocCacheMocks() {
+  mockGetTenantId.mockReturnValue(undefined);
+  mockAuthUserDocCacheStore.get.mockResolvedValue(undefined);
+  mockAuthUserDocCacheStore.set.mockResolvedValue(undefined);
+  mockAuthUserDocCacheStore.delete.mockResolvedValue(undefined);
+  mockGetLogStores.mockReturnValue(mockAuthUserDocCacheStore);
+  buildAuthUserDocCacheKey.mockReturnValue('auth-user-doc-key');
+  getAuthUserDocCacheMode.mockReturnValue('off');
+  getCachedAuthUserDoc.mockResolvedValue(undefined);
+  getValidOpenIdReuseUserId.mockReturnValue(null);
+  invalidateCachedAuthUserDoc.mockResolvedValue(undefined);
+  setCachedAuthUserDoc.mockResolvedValue(undefined);
+}
+
+beforeEach(() => {
+  resetAuthUserDocCacheMocks();
+});
 
 function withEnv(env, callback) {
   const previous = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
@@ -345,6 +383,233 @@ describe('openIdJwtStrategy – token source handling', () => {
     expect(user.federatedTokens.access_token).toBe('the-access-token');
     expect(user.federatedTokens.id_token).toBe('the-id-token');
     expect(user.federatedTokens.access_token).not.toBe(user.federatedTokens.id_token);
+  });
+});
+
+describe('openIdJwtStrategy – auth user document cache', () => {
+  const payload = {
+    sub: 'oidc-123',
+    email: 'test@example.com',
+    iss: 'https://issuer.example.com',
+    exp: 9999999999,
+  };
+
+  const req = { headers: { authorization: 'Bearer tok' }, session: {} };
+
+  const baseUser = {
+    _id: { toString: () => 'user-abc' },
+    role: SystemRoles.USER,
+    provider: 'openid',
+    email: 'test@example.com',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetAuthUserDocCacheMocks();
+    updateUser.mockResolvedValue({});
+    openIdJwtLogin(mockOpenIdConfig);
+  });
+
+  it('does not initialize the cache store while cache mode is off', async () => {
+    findOpenIDUser.mockResolvedValue({ user: { ...baseUser }, error: null, migration: false });
+
+    await invokeVerify(req, payload);
+
+    expect(findOpenIDUser).toHaveBeenCalled();
+    expect(mockGetLogStores).not.toHaveBeenCalled();
+    expect(getCachedAuthUserDoc).not.toHaveBeenCalled();
+    expect(setCachedAuthUserDoc).not.toHaveBeenCalled();
+  });
+
+  it('uses the cached user document in on mode without a database lookup', async () => {
+    mockGetTenantId.mockReturnValue('tenant-a');
+    const cachedUser = {
+      _id: 'cached-user',
+      role: SystemRoles.USER,
+      provider: 'openid',
+      email: 'cached@example.com',
+      tenantId: 'tenant-a',
+    };
+    getAuthUserDocCacheMode.mockReturnValue('on');
+    getCachedAuthUserDoc.mockResolvedValue(cachedUser);
+
+    const { user } = await invokeVerify(req, payload);
+
+    expect(buildAuthUserDocCacheKey).toHaveBeenCalledWith({
+      strategy: 'openid-jwt',
+      subject: payload.sub,
+      issuer: 'https://issuer.example.com',
+      tenantId: 'tenant-a',
+    });
+    expect(findOpenIDUser).not.toHaveBeenCalled();
+    expect(user).toMatchObject({
+      id: 'cached-user',
+      email: 'cached@example.com',
+      idOnTheSource: null,
+    });
+    expect(setCachedAuthUserDoc).not.toHaveBeenCalled();
+    expect(invalidateCachedAuthUserDoc).not.toHaveBeenCalled();
+  });
+
+  it('populates the cache after a miss with the fresh user document', async () => {
+    getAuthUserDocCacheMode.mockReturnValue('on');
+    getCachedAuthUserDoc.mockResolvedValue(undefined);
+    findOpenIDUser.mockResolvedValue({ user: { ...baseUser }, error: null, migration: false });
+
+    await invokeVerify(req, payload);
+
+    expect(findOpenIDUser).toHaveBeenCalled();
+    expect(setCachedAuthUserDoc).toHaveBeenCalledWith(
+      mockAuthUserDocCacheStore,
+      'auth-user-doc-key',
+      expect.objectContaining({ id: 'user-abc' }),
+    );
+    expect(invalidateCachedAuthUserDoc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cached user document from another tenant', async () => {
+    mockGetTenantId.mockReturnValue('tenant-b');
+    getAuthUserDocCacheMode.mockReturnValue('on');
+    getCachedAuthUserDoc.mockResolvedValue({
+      _id: 'tenant-a-user',
+      role: SystemRoles.ADMIN,
+      provider: 'openid',
+      email: 'cached@example.com',
+      tenantId: 'tenant-a',
+    });
+    findOpenIDUser.mockResolvedValue({
+      user: { ...baseUser, _id: { toString: () => 'tenant-b-user' }, tenantId: 'tenant-b' },
+      error: null,
+      migration: false,
+    });
+
+    const { user } = await invokeVerify(req, payload);
+
+    expect(buildAuthUserDocCacheKey).toHaveBeenCalledWith({
+      strategy: 'openid-jwt',
+      subject: payload.sub,
+      issuer: 'https://issuer.example.com',
+      tenantId: 'tenant-b',
+    });
+    expect(findOpenIDUser).toHaveBeenCalled();
+    expect(user).toMatchObject({ id: 'tenant-b-user', tenantId: 'tenant-b' });
+    expect(setCachedAuthUserDoc).toHaveBeenCalledWith(
+      mockAuthUserDocCacheStore,
+      'auth-user-doc-key',
+      expect.objectContaining({ id: 'tenant-b-user', tenantId: 'tenant-b' }),
+    );
+  });
+
+  it('uses the signed OpenID user id as cache scope before tenant context is available', async () => {
+    getAuthUserDocCacheMode.mockReturnValue('on');
+    getValidOpenIdReuseUserId.mockReturnValue('tenant-a-user');
+    getCachedAuthUserDoc.mockResolvedValue({
+      _id: 'tenant-a-user',
+      role: SystemRoles.USER,
+      provider: 'openid',
+      email: 'cached@example.com',
+      tenantId: 'tenant-a',
+    });
+
+    const { user } = await invokeVerify(
+      {
+        headers: {
+          authorization: 'Bearer tok',
+          cookie: 'openid_user_id=signed-user-id',
+        },
+        session: {},
+      },
+      payload,
+    );
+
+    expect(getValidOpenIdReuseUserId).toHaveBeenCalledWith('signed-user-id');
+    expect(buildAuthUserDocCacheKey).toHaveBeenCalledWith({
+      strategy: 'openid-jwt',
+      subject: payload.sub,
+      issuer: 'https://issuer.example.com',
+      userId: 'tenant-a-user',
+    });
+    expect(findOpenIDUser).not.toHaveBeenCalled();
+    expect(user).toMatchObject({ id: 'tenant-a-user', tenantId: 'tenant-a' });
+  });
+
+  it('does not cache a lookup result outside the active tenant scope', async () => {
+    mockGetTenantId.mockReturnValue('tenant-b');
+    getAuthUserDocCacheMode.mockReturnValue('on');
+    getCachedAuthUserDoc.mockResolvedValue(undefined);
+    findOpenIDUser.mockResolvedValue({
+      user: { ...baseUser, tenantId: 'tenant-a' },
+      error: null,
+      migration: false,
+    });
+
+    await invokeVerify(req, payload);
+
+    expect(findOpenIDUser).toHaveBeenCalled();
+    expect(setCachedAuthUserDoc).not.toHaveBeenCalled();
+  });
+
+  it('invalidates instead of populating when login mutates the user', async () => {
+    getAuthUserDocCacheMode.mockReturnValue('on');
+    findOpenIDUser.mockResolvedValue({
+      user: { ...baseUser, role: undefined },
+      error: null,
+      migration: false,
+    });
+
+    await invokeVerify(req, payload);
+
+    expect(updateUser).toHaveBeenCalledWith('user-abc', { role: SystemRoles.USER });
+    expect(setCachedAuthUserDoc).not.toHaveBeenCalled();
+    expect(invalidateCachedAuthUserDoc).toHaveBeenCalledWith(mockAuthUserDocCacheStore, {
+      userId: 'user-abc',
+      cacheKey: 'auth-user-doc-key',
+    });
+  });
+});
+
+describe('openIdJwtStrategy – idOnTheSource boundary coercion', () => {
+  const payload = {
+    sub: 'oidc-123',
+    email: 'test@example.com',
+    iss: 'https://issuer.example.com',
+    exp: 9999999999,
+  };
+  const req = { headers: { authorization: 'Bearer tok' }, session: {} };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    updateUser.mockResolvedValue({});
+    openIdJwtLogin(mockOpenIdConfig);
+  });
+
+  it('coerces missing idOnTheSource to null', async () => {
+    findOpenIDUser.mockResolvedValue({
+      user: { _id: { toString: () => 'user-abc' }, role: SystemRoles.USER, provider: 'openid' },
+      error: null,
+      migration: false,
+    });
+
+    const { user } = await invokeVerify(req, payload);
+
+    expect(user.idOnTheSource).toBeNull();
+  });
+
+  it('preserves a stored idOnTheSource', async () => {
+    findOpenIDUser.mockResolvedValue({
+      user: {
+        _id: { toString: () => 'user-abc' },
+        role: SystemRoles.USER,
+        provider: 'openid',
+        idOnTheSource: 'entra-oid-123',
+      },
+      error: null,
+      migration: false,
+    });
+
+    const { user } = await invokeVerify(req, payload);
+
+    expect(user.idOnTheSource).toBe('entra-oid-123');
   });
 });
 

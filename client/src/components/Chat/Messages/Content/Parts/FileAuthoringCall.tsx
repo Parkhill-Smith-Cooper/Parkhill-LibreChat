@@ -1,13 +1,15 @@
 import { useMemo } from 'react';
 import { FilePenLine, FilePlus2 } from 'lucide-react';
-import type { TAttachment } from 'librechat-data-provider';
+import type { TAttachment, PartMetadata } from 'librechat-data-provider';
 import parseJsonField, { parseJsonFieldOccurrences } from './parseJsonField';
 import ProgressText from '~/components/Chat/Messages/Content/ProgressText';
 import useToolCallState from './useToolCallState';
 import useLazyHighlight from './useLazyHighlight';
 import CodeWindowHeader from './CodeWindowHeader';
+import useFollowScroll from './useFollowScroll';
 import { AttachmentGroup } from './Attachment';
 import { langFromPath } from './ReadFileCall';
+import { useToolCallIntent } from './intent';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
@@ -105,6 +107,8 @@ function buildEditArgsPreview(args: ToolCallArgs): string {
 export default function FileAuthoringCall({
   toolName,
   isSubmitting,
+  runStepStatus,
+  runStepDurationMs,
   initialProgress = 0.1,
   args,
   output = '',
@@ -115,6 +119,8 @@ export default function FileAuthoringCall({
   toolName: FileAuthoringToolName;
   initialProgress: number;
   isSubmitting: boolean;
+  runStepStatus?: PartMetadata['runStepStatus'];
+  runStepDurationMs?: PartMetadata['runStepDurationMs'];
   args?: string | Record<string, unknown>;
   output?: string;
   attachments?: TAttachment[];
@@ -128,6 +134,7 @@ export default function FileAuthoringCall({
    *  `Created`/`Updated`, so key the finished label off it for truthfulness. */
   const overwrote = isCreate && output.startsWith('Updated ');
   const filePath = useMemo(() => parseJsonField(args, 'file_path'), [args]);
+  const intent = useToolCallIntent(args);
   const authoredContent = useMemo(() => parseJsonField(args, 'content'), [args]);
   const editArgsPreview = useMemo(() => buildEditArgsPreview(args), [args]);
   const fileName = filePath.split('/').pop() || filePath;
@@ -146,9 +153,21 @@ export default function FileAuthoringCall({
   }
 
   const { showCode, toggleCode, expandStyle, expandRef, progress, cancelled, hasError } =
-    useToolCallState(initialProgress, isSubmitting, output, !!filePath || !!preview, onExpand);
+    useToolCallState(
+      initialProgress,
+      isSubmitting,
+      output,
+      !!filePath || !!preview,
+      onExpand,
+      runStepStatus,
+    );
 
   const highlighted = useLazyHighlight(preview || undefined, previewLang);
+  const { ref: previewPaneRef, onScroll: onPreviewPaneScroll } = useFollowScroll<HTMLPreElement>(
+    highlighted ?? preview,
+    progress < 1 && !cancelled,
+    showCode,
+  );
   const Icon = isCreate && !overwrote ? FilePlus2 : FilePenLine;
   let finishedKey: 'com_ui_created_file' | 'com_ui_updated_file' | 'com_ui_edited_file' =
     'com_ui_edited_file';
@@ -158,16 +177,22 @@ export default function FileAuthoringCall({
 
   return (
     <>
-      <div className="relative my-1.5 flex size-5 shrink-0 items-center gap-2.5">
+      <div className="relative my-1.5 flex h-5 shrink-0 items-center gap-2.5">
         <ProgressText
           progress={progress}
           onClick={toggleCode}
-          inProgressText={localize(isCreate ? 'com_ui_creating_file' : 'com_ui_editing_file', {
-            0: fileName,
-          })}
-          finishedText={
-            cancelled ? localize('com_ui_cancelled') : localize(finishedKey, { 0: fileName })
+          inProgressText={
+            intent ??
+            localize(isCreate ? 'com_ui_creating_file' : 'com_ui_editing_file', {
+              0: fileName,
+            })
           }
+          finishedText={
+            cancelled
+              ? localize('com_ui_cancelled')
+              : (intent ?? localize(finishedKey, { 0: fileName }))
+          }
+          durationMs={runStepDurationMs}
           errorSuffix={hasError && !cancelled ? localize('com_ui_tool_failed') : undefined}
           icon={
             <Icon
@@ -188,7 +213,11 @@ export default function FileAuthoringCall({
           {!!preview && (
             <div className="my-2 overflow-hidden rounded-lg border border-border-light bg-surface-secondary">
               <CodeWindowHeader language={previewIsDiff ? 'diff' : fileName} code={preview} />
-              <pre className="max-h-[300px] overflow-auto bg-surface-chat p-4 font-mono text-xs dark:bg-surface-primary-alt">
+              <pre
+                ref={previewPaneRef}
+                onScroll={onPreviewPaneScroll}
+                className="max-h-[300px] overflow-auto bg-surface-chat p-4 font-mono text-xs dark:bg-surface-primary-alt"
+              >
                 <code className={`hljs language-${previewLang} !whitespace-pre`}>
                   {highlighted ?? preview}
                 </code>
@@ -197,7 +226,7 @@ export default function FileAuthoringCall({
                 <pre
                   className={cn(
                     'max-h-[300px] overflow-auto whitespace-pre-wrap break-words border-t border-border-light px-3 py-2.5 font-mono text-xs',
-                    hasError ? 'text-red-600 dark:text-red-400' : 'text-text-primary',
+                    hasError ? 'text-status-error' : 'text-text-primary',
                   )}
                 >
                   {output}
