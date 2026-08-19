@@ -422,6 +422,43 @@ mcpServers:
     headers:
       x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
     timeout: 120000
+  sketchup-mcp:
+    # Same desktop connector and same backend as revit-mcp; the /mcp/sketchup
+    # mount routes to appId=sketchup on the user's own workstation.
+    type: streamable-http
+    url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp/sketchup
+    headers:
+      x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
+    timeout: 120000
+    serverInstructions: |
+      SketchUp modeling tools that act on the model open on this user's own
+      workstation. SketchUp must be running with the Parkhill MCP extension.
+
+      If a tool returns SKETCHUP_NOT_RUNNING, tell the user to open SketchUp and
+      stop there - do not retry in a loop. SKETCHUP_BUSY means SketchUp is
+      showing a dialog or is mid-operation.
+
+      Lengths are in inches and angles in degrees. Call sketchup_status or
+      get_selection before a multi-step edit, and use the entity ids returned by
+      create_component to reference geometry later.
+  sketchup-admin-mcp:
+    # Adds eval_ruby, which runs arbitrary Ruby in the user's SketchUp process.
+    # Access is enforced SERVER-SIDE by SKETCHUP_ADMIN_ALLOWED_USERS on the
+    # backend: LibreChat cannot ACL yaml-declared servers, so this entry is
+    # visible to everyone with the mcpServers USE permission and that backend
+    # allowlist is the real control. Non-listed users get an empty tool list.
+    type: streamable-http
+    url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp/sketchup-admin
+    headers:
+      x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
+    timeout: 300000
+    serverInstructions: |
+      Privileged SketchUp tools, including eval_ruby, which executes arbitrary
+      Ruby inside the user's SketchUp process and blocks its UI thread with no
+      way to cancel. Prefer the typed tools on sketchup-mcp whenever one fits.
+
+      Before running any eval_ruby that modifies the model, say plainly what the
+      code will do and get the user to confirm. Keep snippets short and fast.
   elastic-observability:
     type: streamable-http
     url: "https://bimbeats.kb.southcentralus.azure.elastic-cloud.com/api/agent_builder/mcp"
