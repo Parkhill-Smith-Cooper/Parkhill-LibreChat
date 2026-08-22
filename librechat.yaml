@@ -417,10 +417,18 @@ mcpServers:
     # facade. x-user-id is the user's email; the desktop connector registers
     # with the same email so the backend dispatches to the right machine.
     # (Named revit-mcp, not parkhill-revit, to start with clean OAuth state.)
+    #
+    # x-parkhill-mcp-key: the backend's /mcp* facade is public and trusts
+    # x-user-id verbatim, so without a shared secret anyone who knows a
+    # colleague's email can drive tools on their workstation. The backend
+    # ignores this header until MCP_FACADE_SHARED_SECRET is set there, so the
+    # safe rollout is: ship this header first, then set the secret. Reverse to
+    # roll back. Set PARKHILL_MCP_KEY in the container app's env.
     type: streamable-http
     url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp
     headers:
       x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
+      x-parkhill-mcp-key: "${PARKHILL_MCP_KEY}"
     timeout: 120000
   sketchup-mcp:
     # Same desktop connector and same backend as revit-mcp; the /mcp/sketchup
@@ -429,6 +437,7 @@ mcpServers:
     url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp/sketchup
     headers:
       x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
+      x-parkhill-mcp-key: "${PARKHILL_MCP_KEY}"
     # Nests above the backend's 90s per-call timeout for sketchup, which in turn
     # sits above the MCP server's 60s socket timeout. eval_ruby can be slow.
     timeout: 300000
@@ -449,6 +458,41 @@ mcpServers:
       one fits. Keep snippets short and avoid loops that could hang SketchUp.
       Before running code that modifies the model, say plainly what it will do
       and get the user to confirm.
+  rhino-mcp:
+    # Same desktop connector and same backend as revit-mcp; the /mcp/rhino mount
+    # routes to appId=rhino on the user's own workstation. Unlike Revit and
+    # SketchUp the workstation side is McNeel's own rhino-mcp-router, shipped
+    # inside the Rhino-MCP-Platform yak, so the Rhino tooling is versioned by
+    # Rhino's PackageManager rather than by the connector MSI.
+    type: streamable-http
+    url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp/rhino
+    headers:
+      x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
+      x-parkhill-mcp-key: "${PARKHILL_MCP_KEY}"
+    # Nests above the backend's 360s per-call timeout for rhino, which in turn
+    # sits above the router's hard-coded 5-minute timeout on the hop into Rhino.
+    # A Grasshopper solve or a long script genuinely can run for minutes, and if
+    # this fires first the work still completes in Rhino with its result dropped.
+    timeout: 420000
+    serverInstructions: |
+      Rhino 3D and Grasshopper tools that act on the model open on this user's
+      own workstation. Rhino must be running with the Rhino-MCP-Platform plugin,
+      installed from Rhino's PackageManager.
+
+      If a tool reports that Rhino is not running, tell the user to open Rhino
+      and stop there - do not retry in a loop.
+
+      Call get_selection or list_objects before a multi-step edit, and use
+      get_viewport_image to check your work visually.
+
+      The slot tools (spawn_slot, list_slots, close_slot) open extra headless
+      Rhino documents for batch work such as rendering many options. Use them
+      only when the user asks for that; by default act on the Rhino they already
+      have open, and close any slot you opened.
+
+      Grasshopper tools are prefixed g1_ for Grasshopper 1. Call g1_start before
+      the first canvas operation, and g1_solve_graph after edits so geometry
+      updates before you capture or measure it.
   elastic-observability:
     type: streamable-http
     url: "https://bimbeats.kb.southcentralus.azure.elastic-cloud.com/api/agent_builder/mcp"
