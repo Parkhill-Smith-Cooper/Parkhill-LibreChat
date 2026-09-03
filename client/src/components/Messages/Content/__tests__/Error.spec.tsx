@@ -39,6 +39,23 @@ describe('Error — typed provider errors', () => {
     expect(screen.queryByText(/langchain\.com/i)).not.toBeInTheDocument();
   });
 
+  it('replaces the LangGraph recursion-limit text with localized guidance', () => {
+    const raw =
+      'An error occurred while processing the request: Recursion limit of 58 reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key. Troubleshooting URL: https://docs.langchain.com/oss/javascript/langgraph/GRAPH_RECURSION_LIMIT/';
+    render(<Error text={raw} />);
+
+    expect(screen.getByText(catalog.com_error_recursion_limit)).toBeInTheDocument();
+    expect(screen.queryByText(/recursionLimit/)).not.toBeInTheDocument();
+  });
+
+  it('matches the recursion-limit sentence without the troubleshooting URL', () => {
+    const raw =
+      'An error occurred while resuming the request: Recursion limit of 158 reached without hitting a stop condition.';
+    render(<Error text={raw} />);
+
+    expect(screen.getByText(catalog.com_error_recursion_limit)).toBeInTheDocument();
+  });
+
   it('falls back to the raw provider text for an unmapped error', () => {
     const raw =
       '[GoogleGenerativeAI Error]: [400 Bad Request] Request contains an invalid argument';

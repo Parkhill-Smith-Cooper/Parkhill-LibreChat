@@ -1,0 +1,28 @@
+diff --git a/src/server.ts b/src/server.ts
+index deeb28c..f952fd8 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -391,8 +391,21 @@ class MicrosoftGraphServer {
+         });
+       };
+ 
+-      app.get('/.well-known/oauth-protected-resource', protectedResourcesHandler);
+-      app.get('/.well-known/oauth-protected-resource/*path', protectedResourcesHandler);
++      // PARKHILL PATCH: serve 404 instead of RFC 9728 Protected Resource Metadata.
++      // LibreChat unconditionally copies PRM's `resource` onto the Entra /authorize
++      // request (MCPOAuthHandler: "Added resource parameter"). Entra then evaluates the
++      // Graph scopes against resource "http://localhost:8931/mcp", which is not a
++      // registered application in the tenant, so it cannot match the tenant-wide admin
++      // consent grant and returns AADSTS90095 to every user who cannot self-consent.
++      // LibreChat omits `resource` only when PRM discovery returns nothing; a mismatched
++      // `resource` makes it throw instead, so 404 is the only workable option.
++      // Auth is unaffected: the bearer token is still validated against Graph.
++      const parkhillNoPrm = (_req: Request, res: Response) => {
++        res.status(404).end();
++      };
++      app.get('/.well-known/oauth-protected-resource', parkhillNoPrm);
++      app.get('/.well-known/oauth-protected-resource/*path', parkhillNoPrm);
++      void protectedResourcesHandler;
+ 
+       if (this.options.enableDynamicRegistration) {
+         app.post('/register', async (req, res) => {

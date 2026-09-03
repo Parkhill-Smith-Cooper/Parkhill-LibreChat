@@ -7,6 +7,7 @@ import CodeBlock from './CodeBlock';
 
 const localizedErrorPrefix = 'com_error';
 const langChainModelNotFoundUrl = /langchain\.com\/.*\/MODEL_NOT_FOUND(?:\/|\b)/i;
+const graphRecursionLimit = /GRAPH_RECURSION_LIMIT|Recursion limit of \d+ reached/i;
 
 type TConcurrent = {
   limit: number;
@@ -139,6 +140,10 @@ const Error = ({ text }: { text: string }) => {
 
   if (langChainModelNotFoundUrl.test(text)) {
     return localize('com_error_model_not_found');
+  }
+
+  if (graphRecursionLimit.test(text)) {
+    return localize('com_error_recursion_limit');
   }
 
   if (!isJson(jsonString)) {

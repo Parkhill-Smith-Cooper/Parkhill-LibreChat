@@ -394,6 +394,21 @@ actions:
 #       - /path/to/obsidian/vault
 
 # MCP servers (Parkhill) — tools become available to Agents
+# LibreChat blocks MCP URLs that point at localhost or private IP space, to stop a
+# malicious server config from being used to reach services inside the network.
+# outlook-mcp is deliberately such a URL: the ms-365 sidecar shares ca-librechat's
+# network namespace and is never published through ingress, so localhost is the
+# only way to reach it.
+#
+# allowedAddresses is the scoped exemption for exactly that case - one host:port,
+# not a whole host and not a CIDR. Use it rather than allowedDomains: setting
+# allowedDomains switches every MCP server over to allowlist matching, so the
+# Azure/Elastic hosts behind revit, sketchup, rhino and elastic-observability
+# would each have to be enumerated here or they would stop connecting.
+mcpSettings:
+  allowedAddresses:
+    - localhost:8931
+
 mcpServers:
   # filesystem:
   #   type: stdio
@@ -493,6 +508,102 @@ mcpServers:
       Grasshopper tools are prefixed g1_ for Grasshopper 1. Call g1_start before
       the first canvas operation, and g1_solve_graph after edits so geometry
       updates before you capture or measure it.
+  outlook-mcp:
+    # Microsoft 365 mail, calendar and Planner for the signed-in user, over
+    # Microsoft Graph. The server name stays "outlook-mcp" even though it now
+    # covers more than Outlook: LibreChat keys persisted OAuth state on the server
+    # name, so renaming would drop every user's stored token and force them all to
+    # reconnect. `title` is display-only and carries the accurate name.
+    # Display name only. The schema allows letters, numbers and spaces - no hyphens,
+    # so "microsoft-365" is rejected at config load. The server key below stays
+    # outlook-mcp regardless; renaming that would drop every user's stored token.
+    title: Microsoft 365
+    # Upstream is Softeria's ms-365-mcp-server (MIT), built from source into our
+    # own ACR and run as a fourth container inside ca-librechat alongside api,
+    # meilisearch and rag-api. It binds localhost:3000 and is never published
+    # through the Container App's ingress, so the only thing that can reach it is
+    # the api container next to it.
+    #
+    # Auth is per user and PINNED to Entra rather than auto-discovered. The
+    # sidecar can proxy OAuth itself, but that path only works if the sidecar has
+    # a public FQDN the browser can reach. Pinning login.microsoftonline.com here
+    # means LibreChat holds the Graph token and the sidecar simply replays it, so
+    # the server stays private. Each user consents once against their own
+    # account; every Graph call runs as them, so nobody can read a colleague's
+    # mailbox even though the endpoint is shared.
+    #
+    # Mail and calendar are one server on purpose. They share an Entra app, a
+    # consent, and a token - splitting them would make every user click through
+    # OAuth twice for the same mailbox, and the two get used together constantly
+    # ("find the thread from Susan and put a meeting on my calendar"). Tool-count
+    # bloat, the only real argument for splitting, is handled by --preset on the
+    # container instead: mail,calendar rather than the full ~300-tool Graph surface.
+    type: streamable-http
+    url: http://localhost:8931/mcp
+    requiresOAuth: true
+    # Auth is per user, so the app-level connection LibreChat makes at boot can
+    # never succeed - it has no token to present. Skipping it avoids the
+    # "Reinspection failed" noise on every restart; users still connect from the
+    # UI, which is the only place a token can exist.
+    startup: false
+    oauth:
+      authorization_url: https://login.microsoftonline.com/${OUTLOOK_MCP_TENANT_ID}/oauth2/v2.0/authorize
+      token_url: https://login.microsoftonline.com/${OUTLOOK_MCP_TENANT_ID}/oauth2/v2.0/token
+      client_id: "${OUTLOOK_MCP_CLIENT_ID}"
+      client_secret: "${OUTLOOK_MCP_CLIENT_SECRET}"
+      # offline_access is what lets LibreChat refresh silently; without it users
+      # get bounced back to Microsoft roughly every hour.
+      # Must stay an exact subset of the tenant-wide admin consent grant on the
+      # app registration. openid/profile were requested here originally but were
+      # never in the app's requiredResourceAccess, so "Grant admin consent" never
+      # covered them - Entra then demanded per-user consent for those two and
+      # returned AADSTS65001 to everyone who could not self-consent. LibreChat's
+      # MCP OAuth never reads an id_token, so they bought nothing. If you add a
+      # scope here, add the matching delegated permission and re-grant admin
+      # consent, or non-admin users break again.
+      # DIAGNOSTIC (2026-09-01): offline_access temporarily removed. The MCP SDK
+      # appends prompt=consent whenever the scope contains offline_access, which makes
+      # Entra bypass the tenant-wide admin consent grant and demand fresh consent -
+      # AADSTS90095 for anyone who cannot self-consent. Without it, no refresh token,
+      # so users must reconnect when the access token expires. Not the final answer.
+      scope: "User.Read User.ReadBasic.All MailboxSettings.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite Tasks.Read Tasks.ReadWrite"
+    # Graph is fast; a long timeout here only delays surfacing a hung sidecar.
+    timeout: 60000
+    serverInstructions: |
+      Microsoft 365 mail and calendar tools that act on this user's own Outlook
+      mailbox. Every call runs as the signed-in user, so treat anything returned
+      as that person's private correspondence.
+
+      Times are in the user's mailbox timezone. Read it with the mailbox settings
+      tool before scheduling anything rather than assuming, and always echo back
+      the timezone when you propose a meeting time.
+
+      Prefer a narrow search over listing a whole folder - mailboxes are large and
+      a broad list wastes the context window without answering the question. Use
+      the query and date filters, and page only when the user asks for more.
+
+      Sending mail and creating, moving or deleting calendar events are visible
+      to other people and cannot be taken back. Before any of those, show the
+      user the exact recipients, subject and body (or the event details) and wait
+      for them to confirm. Never send to a distribution list or an external
+      address that the user did not name themselves.
+
+      Draft rather than send whenever the user's intent is ambiguous. "Reply to
+      Susan" means write a draft and show it; only send when they say to send.
+
+      Planner tasks sit in plans owned by Microsoft 365 groups, so a task you
+      create or change is visible to that whole group, not just to this user.
+      List the plan's tasks before adding one - duplicates are common - and say
+      which plan and bucket you are writing to before you write.
+
+      Never reassign or complete someone else's task on your own initiative. Ask
+      first, and repeat back the task title and assignee so the user can catch a
+      wrong match. When a plan or bucket name is ambiguous, list the candidates
+      and let the user pick rather than guessing.
+
+      The To Do tools cover this user's private task lists, which are separate
+      from Planner. If the user says "my tasks" without more context, ask which
+      one they mean rather than assuming.
   elastic-observability:
     type: streamable-http
     url: "https://bimbeats.kb.southcentralus.azure.elastic-cloud.com/api/agent_builder/mcp"
@@ -516,11 +627,11 @@ endpoints:
   #   retrievalModels: ["gpt-4-turbo-preview"]
   #   # (optional) Assistant Capabilities available to all users. Omit the ones you wish to exclude. Defaults to list below.
   #   capabilities: ["code_interpreter", "retrieval", "actions", "tools", "image_vision"]
-  # agents:
-  #   # (optional) Default recursion depth for agents, defaults to 25
-  #   recursionLimit: 50
-  #   # (optional) Max recursion depth for agents, defaults to 25
-  #   maxRecursionLimit: 100
+  agents:
+    # (optional) Default recursion depth for agents, defaults to 50
+    recursionLimit: 150
+    # (optional) Max recursion depth for agents, unset means no cap
+    maxRecursionLimit: 300
   #   # (optional) Disable the builder interface for agents
   #   disableBuilder: false
   #   # (optional) When conversation titles are generated:
