@@ -4,8 +4,9 @@
 
 .DESCRIPTION
   Fetches upstream, merges upstream/main into local main, and reports any
-  conflicts. Branding assets are the only expected conflict; resolve by keeping
-  ours. See CUSTOMIZATIONS.md for the full fork policy.
+  conflicts. Expected conflicts are branding assets and the client files listed in
+  CUSTOMIZATIONS.md section 4; resolve by keeping ours. See CUSTOMIZATIONS.md for
+  the full fork policy.
 
 .EXAMPLE
   ./scripts/update-from-upstream.ps1
@@ -56,10 +57,13 @@ Write-Host "==> Merging upstream/main" -ForegroundColor Cyan
 git merge --no-edit upstream/main
 if ($LASTEXITCODE -ne 0) {
   Write-Host ""
-  Write-Host "Merge conflict. Expected only on branding assets — keep ours, e.g.:" -ForegroundColor Yellow
+  Write-Host "Merge conflict. Expected on branding assets and the client files in" -ForegroundColor Yellow
+  Write-Host "CUSTOMIZATIONS.md section 4 — keep ours, e.g.:" -ForegroundColor Yellow
   Write-Host "  git checkout --ours client/public/assets/logo.svg"
   Write-Host "  git add client/public/assets/logo.svg"
   Write-Host "Then: git commit --no-edit"
+  Write-Host "Finally, verify the fork's guarded behavior survived the merge:"
+  Write-Host "  cd client; npx jest Error.spec"
   exit 1
 }
 
