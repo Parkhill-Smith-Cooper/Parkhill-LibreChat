@@ -476,10 +476,12 @@ mcpServers:
       and get the user to confirm.
   rhino-mcp:
     # Same desktop connector and same backend as revit-mcp; the /mcp/rhino mount
-    # routes to appId=rhino on the user's own workstation. Unlike Revit and
-    # SketchUp the workstation side is McNeel's own rhino-mcp-router, shipped
-    # inside the Rhino-MCP-Platform yak, so the Rhino tooling is versioned by
-    # Rhino's PackageManager rather than by the connector MSI.
+    # routes to appId=rhino on the user's own workstation. From connector 1.1.4
+    # the workstation side is @parkhill/mcp-server-for-rhino, pinned by the MSI,
+    # which launches the router inside the Parkhill-Rhino-MCP yak: Parkhill's
+    # fork of McNeel's Rhino MCP with native geometry tools. The yak is installed
+    # into Rhino by each user, so the Rhino tools themselves are versioned by the
+    # yak rather than by the connector MSI.
     type: streamable-http
     url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp/rhino
     headers:
@@ -492,11 +494,29 @@ mcpServers:
     timeout: 420000
     serverInstructions: |
       Rhino 3D and Grasshopper tools that act on the model open on this user's
-      own workstation. Rhino must be running with the Rhino-MCP-Platform plugin,
-      installed from Rhino's PackageManager.
+      own workstation. Rhino must be running with the Parkhill Rhino MCP plugin
+      (the Parkhill-Rhino-MCP .yak, dragged onto Rhino and Rhino restarted).
 
       If a tool reports that Rhino is not running, tell the user to open Rhino
-      and stop there - do not retry in a loop.
+      and stop there - do not retry in a loop. If the only tool available is
+      install_parkhill_rhino_mcp, the plugin is missing: explain that, and call
+      it only if the user agrees.
+
+      To model, use the structured geometry tools: create_curve (line, polyline,
+      curve, interpcrv, rectangle, circle, arc, ellipse), create_solid (plane,
+      box, cylinder, sphere), create_surface (planar_srf, edge_srf, extrude_crv,
+      extrude_srf, loft, sweep1, sweep2, revolve, cap), transform_objects (move,
+      rotate, scale, scale1d, mirror, arrays), edit_geometry (break, join, trim,
+      split, extend, explode, offset, offset_srf), boolean_objects (union,
+      difference, split, boolean_intersection, intersect) and group_objects.
+      Each returns the ids of the objects it created; pass those ids to later
+      calls instead of re-selecting. Points are [x, y, z] in the document's
+      units and angles are in degrees. Every call is one undo step.
+
+      Prefer those tools over run_command, run_python and run_csharp, which
+      return no ids and can leave a command waiting for input. Use the script
+      tools only for what the structured tools cannot do, and say plainly what
+      a script will change before running it.
 
       Call get_selection or list_objects before a multi-step edit, and use
       get_viewport_image to check your work visually.
