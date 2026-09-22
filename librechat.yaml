@@ -173,7 +173,7 @@ interface:
     groups: true
     roles: true
   marketplace:
-    use: false
+    use: true
   fileCitations: true
   # Tools pinned to the prompt bar by default for all users.
   # Only seeds the initial state — once a user pins/unpins a tool, their choice is kept.
@@ -433,12 +433,13 @@ mcpServers:
     # with the same email so the backend dispatches to the right machine.
     # (Named revit-mcp, not parkhill-revit, to start with clean OAuth state.)
     #
-    # x-parkhill-mcp-key: the backend's /mcp* facade is public and trusts
-    # x-user-id verbatim, so without a shared secret anyone who knows a
-    # colleague's email can drive tools on their workstation. The backend
-    # ignores this header until MCP_FACADE_SHARED_SECRET is set there, so the
-    # safe rollout is: ship this header first, then set the secret. Reverse to
-    # roll back. Set PARKHILL_MCP_KEY in the container app's env.
+    # x-parkhill-mcp-key: the shared secret that authorizes this deployment to
+    # the facade, which is internet-facing. The backend requires it on every
+    # tool call and refuses anything without it, so it is what keeps the
+    # workstation tools reachable only from here. Set PARKHILL_MCP_KEY in the
+    # container app's env; it must match MCP_FACADE_SHARED_SECRET on the
+    # backend byte for byte, so rotate the two together - changing either one
+    # alone takes every Revit, SketchUp and Rhino tool offline.
     type: streamable-http
     url: https://parkhill-revit-mcp-chat-ui-backend-hee4bzhbadfghta9.centralus-01.azurewebsites.net/mcp
     headers:
@@ -743,6 +744,12 @@ endpoints:
   #     #     deploymentName: claude-3-5-haiku@20241022  # Override for this model
 
   custom:
+    # NOTE: ADMIN users also see custom endpoints that are NOT in this file. They are
+    # injected from the ADMIN role's config override document in Mongo, which is how
+    # we gate newly released frontier models to admins before promoting them to
+    # everyone. Manage that overlay with scripts/set-admin-models.ps1.
+    # See CUSTOMIZATIONS.md section 5. Entries there merge into this list by `name`.
+
     # Anthropic-compatible Example (native `/v1/messages` API)
     # Set `provider: anthropic` to use the native Anthropic client instead of the
     # default OpenAI-compatible one — for Anthropic itself or Anthropic-compatible

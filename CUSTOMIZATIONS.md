@@ -87,6 +87,69 @@ Known gap, deliberately not fixed: `api/server/controllers/agents/responses.js` 
 its run configs without `recursionLimit`, so the Responses-compatible API stays at the
 SDK default of 50. The normal chat UI and `openai.js` both honour the YAML.
 
+### 5. Admin-only models (data, not code)
+
+When a new frontier model ships we want admins to evaluate it before everyone gets it.
+**No source files are involved** — the gate is a config override document in Mongo.
+
+**Files:** `scripts/admin-models.json` (which models), `scripts/set-admin-models.ps1`
+(applies it). Both tracked. The override itself lives in the `configs` collection.
+
+**How it works.** This fork resolves config per request by principal: the YAML base, then
+overrides for the user's role / groups / user id, merged by priority
+(`packages/data-schemas/src/app/resolution.ts`, `packages/api/src/app/service.ts`). An
+endpoint present only in the ADMIN role's override is absent from every non-admin's
+resolved config, so it never reaches their model selector **and** `validateModel`
+(`api/server/middleware/validateModel.js`) rejects it if requested directly — a real
+gate, not just a hidden menu entry.
+
+**Two traps worth remembering:**
+
+- ❌ **`endpoints.anthropic.models.default` cannot gate the built-in endpoints.**
+  `getAnthropicModels` / `getOpenAIModels` read `process.env.ANTHROPIC_MODELS` /
+  `OPENAI_MODELS` and return before consulting the resolved config
+  (`packages/api/src/endpoints/models.ts`). Those are process-global — every user gets
+  the same list regardless of any override. Gated models must therefore live on a
+  **custom** endpoint, which *is* resolved per user.
+- ❌ **Don't use `modelSpecs` for this.** `endpoints.custom` is in `ARRAY_MERGE_KEYS`
+  (merged by `name`), so an override appends cleanly. `modelSpecs.list` is not, so an
+  override would replace the whole array — you would have to duplicate every public spec
+  into the admin document and keep them in sync forever. There is no `modelSpecs:` block
+  in `librechat.yaml` today; the public list comes from `ANTHROPIC_MODELS` /
+  `OPENAI_MODELS` / `GOOGLE_MODELS` in `.env` plus the OpenRouter fetch.
+
+**Gate a new model:** add its id to `models.default` in `scripts/admin-models.json`, keep
+it **out** of `ANTHROPIC_MODELS` in `.env`, then
+`./scripts/set-admin-models.ps1 -Token <jwt> -Action Apply -BaseUrl <prod-url>`.
+
+**Promote it to everyone:** add the id to `ANTHROPIC_MODELS` in `.env`, remove it from
+`admin-models.json`, re-apply. Demotion is the reverse.
+
+**Auth — needs the token *and* the cookies.** `ALLOW_EMAIL_LOGIN=false` (Entra ID only), so
+the script cannot sign in. Sign in as an admin, then DevTools → **Network** → any `/api/...`
+request → Request Headers, and copy **both** from that same request:
+
+- the value after `Authorization: Bearer ` → `-Token`
+- the entire `Cookie:` value → `-Cookie`
+
+The header alone returns **401**, and the reason is non-obvious: with
+`OPENID_REUSE_TOKENS=true` the access token is **RS256, signed by Entra**. `requireJwtAuth`
+(`api/server/middleware/requireJwtAuth.js`) only validates that with the `openidJwt`
+passport strategy, and it decides to try that strategy from the `token_provider` /
+`openid_user_id` **cookies** — not from the Authorization header. With no cookies it falls
+back to the local HS256 `jwt` strategy, which cannot verify an Entra-signed token.
+
+The access token lives in memory (an axios default header), *not* in localStorage — hence
+the Network tab. Both values are short-lived; on a 401, reload and re-copy both.
+
+Admins already hold the required `access:admin` + `manage:configs`; `seedSystemGrants`
+grants every capability to the ADMIN role on boot.
+
+⚠️ **This override is in Cosmos, not the Azure Files config share.** Neither
+`parkhill-deploy.yml` nor `update-librechat-config.ps1` carries it, and it is not part of
+any backup those cover. **If the database is rebuilt, re-run the script.** Use
+`-Action Show` to confirm what is currently applied.
+
 ---
 
 ## Things we must NOT do

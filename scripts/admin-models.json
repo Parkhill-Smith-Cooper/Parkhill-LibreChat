@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "Admin-only model overlay. Applied to the ADMIN role config override by",
+    "scripts/set-admin-models.ps1 — see CUSTOMIZATIONS.md section 5.",
+    "",
+    "Endpoints listed here are visible AND usable by ADMIN users only. Non-admins",
+    "never receive them in their resolved config, so the models are absent from the",
+    "model selector and rejected by the server if requested directly.",
+    "",
+    "To gate a newly released model: add its id to models.default below, then run",
+    "  ./scripts/set-admin-models.ps1 -Token <jwt> -Action Apply",
+    "To promote it to everyone: add the id to ANTHROPIC_MODELS in .env, remove it",
+    "from here, and re-apply.",
+    "",
+    "'custom' entries merge by 'name', so this appends to librechat.yaml's list",
+    "(OpenRouter) rather than replacing it. Keep names stable across applies."
+  ],
+  "endpoints": {
+    "custom": [
+      {
+        "name": "Anthropic (Admin Preview)",
+        "provider": "anthropic",
+        "apiKey": "${ANTHROPIC_API_KEY}",
+        "baseURL": "https://api.anthropic.com",
+        "headers": {
+          "anthropic-version": "2023-06-01"
+        },
+        "models": {
+          "default": ["claude-fable-5-1"],
+          "fetch": false
+        },
+        "titleConvo": true,
+        "titleModel": "claude-haiku-4-5-20251001",
+        "modelDisplayLabel": "Anthropic (Admin Preview)"
+      },
+      {
+        "_note": "CONFIRM THE MODEL ID before applying - 'gpt-astra' is a placeholder. Use the exact id OpenAI's /v1/models returns, or the request will be rejected upstream.",
+        "name": "OpenAI (Admin Preview)",
+        "apiKey": "${OPENAI_API_KEY}",
+        "baseURL": "https://api.openai.com/v1",
+        "models": {
+          "default": ["gpt-astra"],
+          "fetch": false
+        },
+        "titleConvo": true,
+        "titleModel": "gpt-5.4-mini",
+        "modelDisplayLabel": "OpenAI (Admin Preview)"
+      }
+    ]
+  }
+}
