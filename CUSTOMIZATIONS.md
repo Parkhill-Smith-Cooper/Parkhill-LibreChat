@@ -72,10 +72,12 @@ mid-run. That is LangGraph's per-run step budget: the fork's own default is 50
 clamped to. Per-agent tuning stays in the agent builder UI.
 
 **Code, upstream-maintained files — resolve by keeping ours:**
-- `client/src/components/Messages/Content/Error.tsx` — a `graphRecursionLimit` regex
-  branch that returns localized guidance instead of the raw LangGraph text. It sits
-  directly beside upstream's `langChainModelNotFoundUrl` branch and follows the same
-  pattern, so an upstream refactor of that function is the one place this can be lost.
+- `client/src/components/Messages/Content/Error/index.tsx` — a `graphRecursionLimit`
+  regex checked first inside upstream's `getLangChainErrorKey`, returning localized
+  guidance instead of the raw LangGraph text. It matches the bare "Recursion limit of N
+  reached" sentence too, which upstream's URL-based `parseLangChainErrorCode` does not.
+  (Until v0.8.8 this lived in `Error.tsx`; upstream deleted that file and split it into
+  the `Error/` folder, so the branch was re-applied there during the v0.8.8 merge.)
 - `client/src/locales/en/translation.json` — the `com_error_recursion_limit` key.
 
 Both are guarded by tests in
@@ -83,9 +85,12 @@ Both are guarded by tests in
 against the real English catalog. If a merge drops either edit, those tests fail rather
 than the regression reaching users — **do not delete them to make a merge go green.**
 
-Known gap, deliberately not fixed: `api/server/controllers/agents/responses.js` builds
-its run configs without `recursionLimit`, so the Responses-compatible API stays at the
-SDK default of 50. The normal chat UI and `openai.js` both honour the YAML.
+Since v0.8.8 upstream treats the step limit as a normal terminal state
+(`isStepLimitError` in `packages/api/src/agents/errors.ts`): the turn is saved as
+unfinished and the UI offers to continue, so the localized error is now mainly a fallback
+for older persisted messages and paths that still surface the raw text. v0.8.8 also makes
+the Responses API honour the resolved recursion limit, closing the gap previously noted
+here.
 
 ### 5. Admin-only models (data, not code)
 
