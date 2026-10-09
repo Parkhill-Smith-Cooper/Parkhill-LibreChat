@@ -223,6 +223,48 @@ Things that **never** break chat:
 - The picker fails open when the endpoint can't be reached.
 - When Fabric returns 503, the picker stays up and "No project" is still available.
 
+### 7. Generated-image downloads (code, mostly new files)
+
+The Tech Hub gallery (`parkhill-web-hub`) shows only AI-generated images that someone
+**downloaded**, which is our signal for the best results. LibreChat records each
+download in its own collection.
+
+**Data.** There is one document per generated file in the `parkhillimagedownloads` collection:
+
+```
+{ file_id, user, filepath, downloadCount, firstDownloadedAt, lastDownloadedAt, createdAt, updatedAt }
+```
+
+- `file_id` is unique and joins to `files.file_id`. `user` is the owner's id, stored as a string.
+- The first download creates the doc. Each later one increments `downloadCount` and bumps
+  `lastDownloadedAt`.
+- Only `files` with `context: 'image_generation'` that the downloading user **owns** are
+  recorded. User uploads and code-output images are ignored.
+
+**What counts as a download:** only the **Download button in the image lightbox**. That
+button fetches the blob URL straight from the browser, so the client reports the download
+with `POST /api/parkhill/image-downloads { filepath }`. The report is fire-and-forget and never
+blocks the download. These are **not** captured:
+- the browser's right-click "Save image as";
+- viewers of shared links, who are not signed in.
+
+**New files (no conflicts):**
+- `packages/api/src/parkhill/downloads.ts` (store, handler, file lookup) and `downloads.spec.ts`
+- `client/src/components/Parkhill/downloads.ts`, plus `__tests__/downloads.spec.ts` and
+  `__tests__/ImageDownload.spec.tsx`
+
+**Fork files touched:** `packages/api/src/parkhill/index.ts` and `api/server/routes/parkhill.js`.
+The route rides on the existing `/api/parkhill` mount, so `api/server/index.js` has no new edit.
+
+**Upstream files touched (check these when merging):**
+
+| File | Edit |
+|---|---|
+| `client/src/components/Chat/Messages/Content/Image.tsx` | Import `recordImageDownload` and call `recordImageDownload(imagePath)` as the first line of `downloadImage`. If upstream moves or renames the download function, put the call back in it. |
+
+`client/src/components/Parkhill/__tests__/ImageDownload.spec.tsx` renders the real `Image`
+and fails if a merge drops this line. **Do not delete it to make a merge go green.**
+
 ---
 
 ## Things we must NOT do

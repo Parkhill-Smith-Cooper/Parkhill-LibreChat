@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Skeleton } from '@librechat/client';
 import { apiBaseUrl } from 'librechat-data-provider';
+import { recordImageDownload } from '~/components/Parkhill/downloads';
 import { cn, toAbsoluteFilePath } from '~/utils';
 import DialogImage from './DialogImage';
 
@@ -56,6 +57,7 @@ const Image = ({
   const absoluteImageUrl = useMemo(() => toAbsoluteFilePath(imagePath, apiBaseUrl()), [imagePath]);
 
   const downloadImage = async () => {
+    recordImageDownload(imagePath);
     try {
       const response = await fetch(absoluteImageUrl);
       if (!response.ok) {
