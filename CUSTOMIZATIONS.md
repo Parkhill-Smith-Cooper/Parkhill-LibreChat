@@ -155,6 +155,74 @@ grants every capability to the ADMIN role on boot.
 any backup those cover. **If the database is rebuilt, re-run the script.** Use
 `-Action Show` to confirm what is currently applied.
 
+### 6. Official project per conversation (code, mostly new files)
+
+Before the first message of every new chat, the composer asks which **official project**
+it belongs to, or "No project (general)". The choice is stored in Mongo. This is **not**
+upstream's Chat Projects feature, which is user-made folders.
+
+**Data.** Each conversation gets one document in the `parkhillconversationprojects`
+collection:
+
+```
+{ conversationId, user, projectNumber, projectName, noProject, createdAt }
+```
+
+- The choice is recorded once, on the first message, and never overwritten.
+- `projectName` is a snapshot taken from Fabric at that moment.
+- A conversation with **no** document means the picker was off or bypassed. The rule is
+  enforced in the UI only.
+
+To report, join on `conversationId` with `$lookup` against `conversations`.
+
+**Project list.** Comes live from the Fabric Lakehouse, the same table and filters as
+`D:\GitHub\projects`:
+
+- Table `DT_BRZ.project`, rows with `Status='A'` and parent level only.
+- `WBS1` is the number and `Name` is the name, about 4,700 rows.
+- The query uses `mssql` with an Entra token: managed identity in Azure, `az login` locally.
+- The list is cached in memory for 15 min and loaded at startup.
+
+| Env var | Value |
+|---|---|
+| `FABRIC_SQL_SERVER` | `<workspace-guid>.datawarehouse.fabric.microsoft.com` (**unset = feature off**) |
+| `FABRIC_SQL_DATABASE` | `Vantagepoint_Datalakehouse` |
+| `FABRIC_PROJECTS_TABLE` | optional, default `DT_BRZ.project` |
+| `FABRIC_PROJECTS_CACHE_TTL_MS` | optional, default `900000` |
+| `FABRIC_MANAGED_IDENTITY_CLIENT_ID` | **required in prod**: client ID of the user-assigned `id-librechat` (`89da2e49-6520-4aa4-8bfe-59251c98685f`); the app has no system identity |
+
+The Container App's managed identity needs the **Viewer** role on the Fabric workspace. A
+Fabric admin must also turn on "Service principals can use Fabric APIs". An `ESOCKET`
+error means a permissions problem, not a network one.
+
+**New files (no conflicts):**
+- `packages/api/src/parkhill/` (Fabric source and cache, store, middleware, handler, tests)
+- `api/server/routes/parkhill.js`
+- `client/src/components/Parkhill/` (picker, Jotai state, query, tests)
+
+**Upstream files touched (check these when merging):**
+
+| File | Edit |
+|---|---|
+| `packages/api/src/index.ts` | `export * from './parkhill'` |
+| `packages/api/package.json` + `package-lock.json` | `mssql`, `@types/mssql`. On a lock conflict, take upstream's lock and re-run `npm install`. |
+| `api/server/index.js` | mounts `/api/parkhill` |
+| `api/server/routes/agents/chat.js` | `router.use(captureConversationProject)` just before `buildEndpointOption`. It must stay **before** it: the middleware removes the `parkhillProject` field from the body. |
+| `client/src/components/Chat/Input/ChatForm.tsx` | `useProjectGate`, the picker below the composer surface, and `projectGate.blocked` on the Send button |
+| `client/src/hooks/Chat/useChatFunctions.ts` | `getParkhillProjectField()` in `ask()`: refuses the send while a choice is required, and adds `parkhillProject` to `endpointOption` |
+| `client/src/locales/en/translation.json` | `com_parkhill_*` keys |
+
+**How it works:**
+1. The client sends `parkhillProject`, either a number or `'none'`, with the first message.
+2. The server creates the conversation id inside the agents controller (`req.body.conversationId`).
+3. The middleware validates the number against the cached list.
+4. It writes the record when the response finishes, and skips responses with status 4xx/5xx.
+
+Things that **never** break chat:
+- A failure to write the record is only logged.
+- The picker fails open when the endpoint can't be reached.
+- When Fabric returns 503, the picker stays up and "No project" is still available.
+
 ---
 
 ## Things we must NOT do

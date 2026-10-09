@@ -24,6 +24,7 @@ const AgentController = require('~/server/controllers/agents/request');
 const ResumeController = require('~/server/controllers/agents/resume');
 const addTitle = require('~/server/services/Endpoints/agents/title');
 const { getFiles, getRoleByName } = require('~/models');
+const { captureConversationProject } = require('~/server/routes/parkhill');
 
 const router = express.Router();
 
@@ -84,6 +85,7 @@ router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);
 router.use(guardSubagentThreadTurn);
+router.use(captureConversationProject);
 router.use(buildEndpointOption);
 
 const controller = async (req, res, next) => {

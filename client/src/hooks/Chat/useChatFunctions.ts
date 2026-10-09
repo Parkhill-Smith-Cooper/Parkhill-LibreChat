@@ -40,6 +40,7 @@ import {
 import useFocusRegeneratedResponse from '~/hooks/Chat/useFocusRegeneratedResponse';
 import useGetConversation from '~/hooks/Conversations/useGetConversation';
 import { withSubmittedCodeDecision } from '~/hooks/Agents/codeDecision';
+import { getParkhillProjectField } from '~/components/Parkhill/store';
 import useCodeApprovalMode from '~/hooks/Agents/useCodeApprovalMode';
 import useSetFilesToDelete from '~/hooks/Files/useSetFilesToDelete';
 import useCodeWorkspace from '~/hooks/Agents/useCodeWorkspace';
@@ -365,6 +366,10 @@ export default function useChatFunctions({
       console.error('cannot send any message under search view!');
       return false;
     }
+    const parkhillProjectField = getParkhillProjectField(jotaiStore, conversationId);
+    if (parkhillProjectField === false) {
+      return false;
+    }
 
     const cachedMessages = getMessages(conversationId);
     const isExistingConversation = conversationId != null && conversationId !== Constants.NEW_CONVO;
@@ -550,6 +555,7 @@ export default function useChatFunctions({
       },
       convo,
       chatProjectId ? { chatProjectId } : {},
+      parkhillProjectField,
     ) as TEndpointOption;
     if (endpoint !== EModelEndpoint.agents) {
       endpointOption.key = getExpiry();

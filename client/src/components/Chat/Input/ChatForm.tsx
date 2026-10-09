@@ -39,6 +39,7 @@ import {
   PendingToolApprovalButton,
   PendingToolApprovalPanel,
 } from '~/components/Chat/approval/Review';
+import { ProjectGate, useProjectGate } from '~/components/Parkhill';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import usePastedTextEdit from '~/hooks/Files/usePastedTextEdit';
 import useAskAnswerMode from '~/hooks/Input/useAskAnswerMode';
@@ -204,6 +205,7 @@ const ChatForm = memo(function ChatForm({
     [conversation?.conversationId],
   );
   const isNewConversation = conversationId === '' || conversationId === Constants.NEW_CONVO;
+  const projectGate = useProjectGate(index === 0, isNewConversation);
   /**
    * The quote feature merges excerpts server-side in `BaseClient.sendMessage`,
    * which the Assistants endpoints bypass — so hide the UI there rather than
@@ -921,6 +923,7 @@ const ChatForm = memo(function ChatForm({
                           disabled={
                             filesLoading ||
                             disableInputs ||
+                            projectGate.blocked ||
                             !codeWorkspace.canSubmit ||
                             isNotAppendable ||
                             answerMode.composerLocked ||
@@ -933,6 +936,7 @@ const ChatForm = memo(function ChatForm({
               {TextToSpeech && automaticPlayback && <AutoPlayAudio index={index} />}
             </div>
           </div>
+          {projectGate.visible ? <ProjectGate gate={projectGate} /> : null}
         </div>
       </div>
     </form>

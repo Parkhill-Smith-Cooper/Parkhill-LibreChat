@@ -3058,5 +3058,11 @@
   "com_insights_invalid_date_range": "Choose an end date after the start date, within {{days}} days.",
   "com_insights_sparkline_accessibility": "{{label}} over time",
   "com_nav_mobile_drawer_strip": "Show chat beside the sidebar on mobile",
+  "com_parkhill_choose_project": "Choose a project",
+  "com_parkhill_no_project": "No project (general)",
+  "com_parkhill_project_required": "Choose a project, or \"No project\", to start this chat.",
+  "com_parkhill_projects_loading": "Loading projects…",
+  "com_parkhill_projects_unavailable": "The project list is unavailable right now. You can still choose \"No project\".",
+  "com_parkhill_search_projects": "Search by project number or name",
   "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar."
 }
