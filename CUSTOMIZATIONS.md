@@ -265,6 +265,37 @@ The route rides on the existing `/api/parkhill` mount, so `api/server/index.js` 
 `client/src/components/Parkhill/__tests__/ImageDownload.spec.tsx` renders the real `Image`
 and fails if a merge drops this line. **Do not delete it to make a merge go green.**
 
+### 8. Tech Hub MCP server (config only)
+
+The `parkhill-tech-hub` entry in `librechat.yaml` gives chats read-only access to the Tech Hub's
+Apps and Ideas data. The server lives in `parkhill-web-hub` (`backend/routes/mcp.js`), so
+**no LibreChat source is touched**.
+
+**Auth.** The entry uses `obo:`. LibreChat exchanges the signed-in user's Entra token for one
+scoped to the Tech Hub API (`api://1cb8ec0f-.../access_as_user`). The Hub validates it like any
+web hub request, and its `roles` claim carries the user's Tech Hub roles, so Hub admins also
+see admin-only data (for example, Requested apps) in chat.
+
+**One-time Entra setup:** on LibreChat's app registration, add API permission
+*Tech Hub API -> access_as_user* (delegated) and grant admin consent. Without it every tool
+call fails the token exchange.
+
+### 9. Pirros MCP server (config + sidecar)
+
+The `pirros` entry in `librechat.yaml` points at `http://localhost:8932/mcp`, the
+`pirros-proxy` container in `ca-librechat` (source in `parkhill/pirros-proxy/`). **No LibreChat
+source is touched.**
+
+**Why a sidecar.** Pirros returns browser sign-ins only to its five listed AI clients, so
+LibreChat's OAuth callback is rejected. A Pirros *API* credential can take a
+`client_credentials` token instead, which LibreChat cannot request or renew itself. The proxy
+holds that credential (Container App secrets `pirros-api-client-id` and
+`pirros-api-client-secret`), keeps the token fresh and forwards MCP traffic with it.
+
+**Shared access.** Every user gets the credential's full reach, and Pirros cannot tell users
+apart. The image is built by hand (see the folder's README); the release workflow does not
+rebuild it.
+
 ---
 
 ## Things we must NOT do

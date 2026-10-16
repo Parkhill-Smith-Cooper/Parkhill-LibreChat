@@ -403,11 +403,14 @@ actions:
 # allowedAddresses is the scoped exemption for exactly that case - one host:port,
 # not a whole host and not a CIDR. Use it rather than allowedDomains: setting
 # allowedDomains switches every MCP server over to allowlist matching, so the
-# Azure/Elastic hosts behind revit, sketchup, rhino and elastic-observability
-# would each have to be enumerated here or they would stop connecting.
+# Azure/Elastic hosts behind revit, sketchup, rhino and the DB-defined Elastic
+# Observability server would each have to be enumerated here or they would stop
+# connecting.
 mcpSettings:
   allowedAddresses:
     - localhost:8931
+    # pirros-proxy sidecar (parkhill/pirros-proxy)
+    - localhost:8932
 
 mcpServers:
   # filesystem:
@@ -638,13 +641,44 @@ mcpServers:
     # Per-user token only, so the app-level connection at boot cannot succeed.
     startup: false
     timeout: 60000
-  elastic-observability:
+  # Elastic Observability is deliberately NOT defined here. Every server in this
+  # file is offered to every user; there is no per-role filter in YAML. It lives
+  # in the database instead (created by an admin from the side panel's MCP
+  # Servers builder), where it is shared with the ADMIN role only. Do not
+  # re-add it here - that would expose the observability data to all users.
+  parkhill-tech-hub:
+    # Read-only Apps + Ideas data from the Tech Hub (parkhill-web-hub backend,
+    # backend/routes/mcp.js). Auth is per user via Entra On-Behalf-Of: LibreChat
+    # exchanges the signed-in user's token for one scoped to the Tech Hub API, so
+    # the Hub sees the real user and their Tech Hub app roles (Admin included).
+    # Needs a one-time API permission on LibreChat's app registration:
+    # Tech Hub API (1cb8ec0f-...) -> access_as_user, delegated, admin-consented.
+    title: Parkhill Tech Hub
+    description: Company-approved apps and the Ideas board (read-only)
     type: streamable-http
-    url: "https://bimbeats.kb.southcentralus.azure.elastic-cloud.com/api/agent_builder/mcp"
-    headers:
-      Authorization: "ApiKey ${ELASTIC_MCP_API_KEY}"
-    requiresOAuth: false
+    url: https://parkhill-tech-hub-backend-djfccfd9d6btckgd.centralus-01.azurewebsites.net/mcp
+    obo:
+      scopes: api://1cb8ec0f-a06e-4149-9d85-a4bfaadbaad2/access_as_user
+    # Per-user token only, so the app-level connection at boot cannot succeed.
+    startup: false
     timeout: 60000
+    serverInstructions: true
+  pirros:
+    # Pirros detail/family library, reached through the pirros-proxy sidecar
+    # (parkhill/pirros-proxy). Pirros sends browser sign-ins back only to its own
+    # listed AI clients, so per-user OAuth from LibreChat is rejected. The sidecar
+    # holds a Pirros API credential, keeps a client_credentials token fresh and
+    # forwards MCP traffic with it; LibreChat sends no credentials at all.
+    #
+    # The credential is SHARED: every user gets its full reach (workspaces,
+    # filters, read/write/download) and Pirros cannot tell users apart. Scope the
+    # credential to what all of LibreChat may see. Revoking it in Pirros cuts off
+    # everyone at once.
+    title: Pirros
+    description: Parkhill's Pirros library of details, families and standards
+    type: streamable-http
+    url: http://localhost:8932/mcp
+    timeout: 120000
 
 # Definition of custom endpoints
 endpoints:
