@@ -3,6 +3,7 @@ import { Constants } from 'librechat-data-provider';
 
 import type { NextFunction, Request, Response } from 'express';
 import type { ConversationProjectInput, ConversationProjectStore } from './store';
+import type { ProjectFolders } from './folders';
 import type { ProjectCatalog } from './fabric';
 
 import { getSafeErrorMetadata } from '~/utils/errors';
@@ -21,7 +22,11 @@ export interface CaptureRequest extends Request {
 interface CaptureDependencies {
   catalog: ProjectCatalog | null;
   store: ConversationProjectStore;
+  /** Files the conversation into the user's Projects-section folder for the chosen project. */
+  folders?: ProjectFolders;
 }
+
+type ResolvedChoice = Omit<ConversationProjectInput, 'conversationId' | 'user'>;
 
 const isNewConversation = (conversationId: unknown): boolean =>
   conversationId == null || conversationId === '' || conversationId === Constants.NEW_CONVO;
@@ -29,7 +34,7 @@ const isNewConversation = (conversationId: unknown): boolean =>
 async function resolveChoice(
   choice: string,
   catalog: ProjectCatalog,
-): Promise<Omit<ConversationProjectInput, 'conversationId' | 'user'> | null> {
+): Promise<ResolvedChoice | null> {
   if (choice === NO_PROJECT) {
     return { projectNumber: null, projectName: null, noProject: true };
   }
@@ -51,10 +56,47 @@ async function resolveChoice(
 }
 
 /**
+ * Sets `chatProjectId` on the body so upstream creates the conversation inside the
+ * project's folder. A folder the user made themselves is kept; only an empty scope
+ * or another official project's folder is replaced. Never throws.
+ */
+async function assignFolder(
+  folders: ProjectFolders,
+  body: Record<string, unknown>,
+  user: string,
+  resolved: Promise<ResolvedChoice | null>,
+): Promise<void> {
+  try {
+    const fields = await resolved;
+    if (!fields?.projectNumber) {
+      return;
+    }
+    const current = body.chatProjectId;
+    if (typeof current === 'string' && current) {
+      const linkedNumber = await folders.findNumberForFolder(user, current);
+      if (linkedNumber == null || linkedNumber === fields.projectNumber) {
+        return;
+      }
+    }
+    body.chatProjectId = await folders.ensureFolder(user, {
+      number: fields.projectNumber,
+      name: fields.projectName,
+    });
+  } catch (error) {
+    logger.error(
+      '[parkhill] Failed to file conversation in project folder',
+      getSafeErrorMetadata(error),
+    );
+  }
+}
+
+/**
  * Records the project chosen for a new conversation. The server assigns the
  * conversation id inside the chat controller, so the record is written once the
  * response finishes. The field is always removed from the body so it never
- * reaches endpoint options or a model provider. Never fails the chat request.
+ * reaches endpoint options or a model provider. With `folders`, an official
+ * project choice waits for its folder before the chat continues. Never fails
+ * the chat request.
  */
 export type ConversationProjectCapture = (
   req: CaptureRequest,
@@ -118,6 +160,10 @@ export function createConversationProjectCapture(
     };
     res.once('finish', onDone);
     res.once('close', onDone);
-    next();
+    if (!deps.folders || !body || choice === NO_PROJECT) {
+      next();
+      return;
+    }
+    assignFolder(deps.folders, body, user, resolved).then(() => next());
   };
 }

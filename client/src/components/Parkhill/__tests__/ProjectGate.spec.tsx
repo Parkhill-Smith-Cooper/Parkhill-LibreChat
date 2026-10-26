@@ -23,8 +23,10 @@ const PROJECTS = [
 
 type JotaiStore = ReturnType<typeof createStore>;
 
-function Harness({ owner = true, isNew = true }: { owner?: boolean; isNew?: boolean }) {
-  const gate = useProjectGate(owner, isNew);
+type HarnessProps = { owner?: boolean; isNew?: boolean; chatProjectId?: string };
+
+function Harness({ owner = true, isNew = true, chatProjectId }: HarnessProps) {
+  const gate = useProjectGate(owner, isNew, chatProjectId);
   return (
     <>
       <span data-testid="blocked">{String(gate.blocked)}</span>
@@ -33,7 +35,7 @@ function Harness({ owner = true, isNew = true }: { owner?: boolean; isNew?: bool
   );
 }
 
-function renderGate(store: JotaiStore, props: { owner?: boolean; isNew?: boolean } = {}) {
+function renderGate(store: JotaiStore, props: HarnessProps = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui = (p: typeof props) => (
     <QueryClientProvider client={queryClient}>
@@ -165,5 +167,51 @@ describe('ProjectGate', () => {
     renderGate(store, { owner: false, isNew: false });
     await waitFor(() => expect(getSpy).toHaveBeenCalled());
     expect(store.get(projectChoiceAtom)).toEqual(PROJECTS[0]);
+  });
+
+  describe('started from a project folder', () => {
+    const LINKED = '64b000000000000000000001';
+    const OWN = '64b000000000000000000002';
+
+    beforeEach(() => {
+      getSpy.mockImplementation((url: string) => {
+        if (url === '/api/parkhill/projects') {
+          return Promise.resolve({ enabled: true, projects: PROJECTS });
+        }
+        const projectNumber = url.endsWith(LINKED) ? '2402.00' : null;
+        return Promise.resolve({ projectNumber });
+      });
+    });
+
+    it("preselects the folder's official project", async () => {
+      const store = createStore();
+      renderGate(store, { chatProjectId: LINKED });
+      await waitFor(() => expect(store.get(projectChoiceAtom)).toEqual(PROJECTS[1]));
+      expect(screen.getByTestId('blocked')).toHaveTextContent('false');
+      expect(getSpy).toHaveBeenCalledWith(`/api/parkhill/project-folders/${LINKED}`);
+    });
+
+    it('leaves a user-made folder unselected', async () => {
+      const store = createStore();
+      renderGate(store, { chatProjectId: OWN });
+      await waitFor(() =>
+        expect(getSpy).toHaveBeenCalledWith(`/api/parkhill/project-folders/${OWN}`),
+      );
+      expect(store.get(projectChoiceAtom)).toBeNull();
+      expect(screen.getByTestId('blocked')).toHaveTextContent('true');
+    });
+
+    it('clears the preselection when moved to a user-made folder, but not a manual pick', async () => {
+      const store = createStore();
+      const { rerenderWith } = renderGate(store, { chatProjectId: LINKED });
+      await waitFor(() => expect(store.get(projectChoiceAtom)).toEqual(PROJECTS[1]));
+
+      rerenderWith({ chatProjectId: OWN });
+      await waitFor(() => expect(store.get(projectChoiceAtom)).toBeNull());
+
+      act(() => store.set(projectChoiceAtom, 'none'));
+      rerenderWith({});
+      expect(store.get(projectChoiceAtom)).toBe('none');
+    });
   });
 });

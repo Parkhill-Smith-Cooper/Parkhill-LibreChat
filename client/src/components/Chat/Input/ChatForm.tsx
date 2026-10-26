@@ -205,7 +205,7 @@ const ChatForm = memo(function ChatForm({
     [conversation?.conversationId],
   );
   const isNewConversation = conversationId === '' || conversationId === Constants.NEW_CONVO;
-  const projectGate = useProjectGate(index === 0, isNewConversation);
+  const projectGate = useProjectGate(index === 0, isNewConversation, project?._id);
   /**
    * The quote feature merges excerpts server-side in `BaseClient.sendMessage`,
    * which the Assistants endpoints bypass — so hide the UI there rather than

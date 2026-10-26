@@ -158,8 +158,9 @@ any backup those cover. **If the database is rebuilt, re-run the script.** Use
 ### 6. Official project per conversation (code, mostly new files)
 
 Before the first message of every new chat, the composer asks which **official project**
-it belongs to, or "No project (general)". The choice is stored in Mongo. This is **not**
-upstream's Chat Projects feature, which is user-made folders.
+it belongs to, or "No project (general)". The choice is stored in Mongo. The official
+project is separate from upstream's Chat Projects (the **Projects** section of folders), but
+choosing one also files the chat into a folder for it there. See **Project folders** below.
 
 **Data.** Each conversation gets one document in the `parkhillconversationprojects`
 collection:
@@ -174,6 +175,28 @@ collection:
   enforced in the UI only.
 
 To report, join on `conversationId` with `$lookup` against `conversations`.
+
+**Project folders.** When a user picks an official project, the conversation is filed into
+that user's folder for it in the **Projects** section. The folder is an ordinary upstream chat
+project:
+- The first time a user picks a project, the folder is created as `"<number> · <name>"`.
+  If Fabric can't give the name, it is just the number.
+- After that, every chat for that project goes into the same folder.
+- The link is kept in `parkhillprojectfolders`:
+
+  ```
+  { user, projectNumber, chatProjectId }
+  ```
+
+  It is unique per `(user, projectNumber)` and stored by id, so users can rename the folder.
+- If a user deletes the folder, it is recreated on that project's next chat.
+- A new chat started from a project's folder opens with the picker already set to that
+  project. The client reads the link through `GET /api/parkhill/project-folders/:chatProjectId`.
+- A folder the user made themselves is never overridden. A chat started there keeps its
+  folder; only the official choice is recorded.
+- A chat started in another official project's folder moves to the folder of the project
+  chosen.
+- "No project" never touches folders.
 
 **Project list.** Comes live from the Fabric Lakehouse, the same table and filters as
 `D:\GitHub\projects`:
@@ -208,7 +231,7 @@ error means a permissions problem, not a network one.
 | `packages/api/package.json` + `package-lock.json` | `mssql`, `@types/mssql`. On a lock conflict, take upstream's lock and re-run `npm install`. |
 | `api/server/index.js` | mounts `/api/parkhill` |
 | `api/server/routes/agents/chat.js` | `router.use(captureConversationProject)` just before `buildEndpointOption`. It must stay **before** it: the middleware removes the `parkhillProject` field from the body. |
-| `client/src/components/Chat/Input/ChatForm.tsx` | `useProjectGate`, the picker below the composer surface, and `projectGate.blocked` on the Send button |
+| `client/src/components/Chat/Input/ChatForm.tsx` | `useProjectGate(index === 0, isNewConversation, project?._id)`, the picker below the composer surface, and `projectGate.blocked` on the Send button |
 | `client/src/hooks/Chat/useChatFunctions.ts` | `getParkhillProjectField()` in `ask()`: refuses the send while a choice is required, and adds `parkhillProject` to `endpointOption` |
 | `client/src/locales/en/translation.json` | `com_parkhill_*` keys |
 
@@ -216,10 +239,16 @@ error means a permissions problem, not a network one.
 1. The client sends `parkhillProject`, either a number or `'none'`, with the first message.
 2. The server creates the conversation id inside the agents controller (`req.body.conversationId`).
 3. The middleware validates the number against the cached list.
-4. It writes the record when the response finishes, and skips responses with status 4xx/5xx.
+4. For a project number, the middleware finds or creates the folder and sets
+   `req.body.chatProjectId` before calling `next()`. From there, upstream's own pipeline puts
+   the new conversation in that folder: `buildEndpointOption`, then the agents controller,
+   then `saveConvo`, which checks ownership and refreshes folder stats. The client then
+   refreshes the Projects list on the final event.
+5. It writes the record when the response finishes, and skips responses with status 4xx/5xx.
 
 Things that **never** break chat:
 - A failure to write the record is only logged.
+- If the folder can't be created, that is only logged, and the chat is sent with no folder.
 - The picker fails open when the endpoint can't be reached.
 - When Fabric returns 503, the picker stays up and "No project" is still available.
 

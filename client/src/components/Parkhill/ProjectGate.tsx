@@ -1,11 +1,15 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Ban, Briefcase } from 'lucide-react';
 import { ControlCombobox } from '@librechat/client';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import type { OptionWithIcon } from '~/common';
 import type { ParkhillProject } from './store';
+import {
+  isProjectsUnavailable,
+  useParkhillProjectsQuery,
+  useParkhillProjectFolderQuery,
+} from './queries';
 import { NO_PROJECT, projectChoiceAtom, projectPromptAtom, projectRequiredAtom } from './store';
-import { isProjectsUnavailable, useParkhillProjectsQuery } from './queries';
 import { useLocalize } from '~/hooks';
 
 const HELP_ID = 'parkhill-project-help';
@@ -27,9 +31,15 @@ export type ProjectGateState = {
  * Only the primary composer (`owner`) writes the shared atoms, so an added
  * multi-convo pane can't clear its choice. Fails open: an unreachable endpoint
  * (or the feature turned off) never blocks sending; a 503 from an enabled
- * server keeps the gate, with "No project" available.
+ * server keeps the gate, with "No project" available. A new chat started from
+ * a Projects-section folder that stands for an official project (`chatProjectId`)
+ * starts with that project chosen.
  */
-export function useProjectGate(owner: boolean, isNewConversation: boolean): ProjectGateState {
+export function useProjectGate(
+  owner: boolean,
+  isNewConversation: boolean,
+  chatProjectId?: string,
+): ProjectGateState {
   const query = useParkhillProjectsQuery();
   const choice = useAtomValue(projectChoiceAtom);
   const setChoice = useSetAtom(projectChoiceAtom);
@@ -47,11 +57,37 @@ export function useProjectGate(owner: boolean, isNewConversation: boolean): Proj
     }
   }, [owner, visible, setRequired]);
 
+  const folder = useParkhillProjectFolderQuery(chatProjectId, visible);
+  const folderNumber = chatProjectId ? folder.data?.projectNumber : undefined;
+  const folderSettled = !chatProjectId || folder.isSuccess;
+  const folderProject = useMemo(
+    () => query.data?.projects.find((project) => project.number === folderNumber),
+    [query.data?.projects, folderNumber],
+  );
+  /** The folder's project, so leaving that folder clears it unless the user picked since. */
+  const autoChoice = useRef<ParkhillProject | null>(null);
+  useEffect(() => {
+    if (!visible || !folderSettled) {
+      return;
+    }
+    if (folderProject) {
+      autoChoice.current = folderProject;
+      setChoice(folderProject);
+      return;
+    }
+    const previous = autoChoice.current;
+    if (previous) {
+      autoChoice.current = null;
+      setChoice((current) => (current === previous ? null : current));
+    }
+  }, [visible, folderSettled, folderProject, setChoice]);
+
   /** Each new chat asks again: clear the draft's choice once it stops being a new chat. */
   useEffect(() => {
     if (!owner || isNewConversation) {
       return;
     }
+    autoChoice.current = null;
     setChoice(null);
     setPrompt(false);
   }, [owner, isNewConversation, setChoice, setPrompt]);
