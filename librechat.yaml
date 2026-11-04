@@ -915,6 +915,18 @@ endpoints:
       dropParams: ['stop']
       modelDisplayLabel: 'OpenRouter'
 
+    # "Auto" — LiteLLM sidecar (see litellm.yaml) picks the model per prompt.
+    # Surfaced at the top of the picker by the `auto` entry under modelSpecs.
+    - name: 'LiteLLM'
+      apiKey: '${LITELLM_MASTER_KEY}'
+      baseURL: 'http://localhost:4000/v1'
+      models:
+        default: ['auto']
+        fetch: false
+      titleConvo: true
+      titleModel: 'gpt-5.4-mini'
+      modelDisplayLabel: 'Auto'
+
     # Helicone Example
     # - name: 'Helicone'
     #   # For `apiKey` and `baseURL`, you can use environment variables that you define.
@@ -978,6 +990,21 @@ endpoints:
   #     # - "disabled": No trace information (default)
   #     # Trace output is logged to application log files for compliance auditing
   #     trace: "enabled"
+modelSpecs:
+  # Keep users' last-used model on new chats; Auto is offered, not forced.
+  # (The default, true, would start every new chat on the first spec.)
+  prioritize: false
+  list:
+    - name: 'auto'
+      label: 'Auto'
+      description: 'Picks a model for each message based on how complex it is'
+      preset:
+        endpoint: 'LiteLLM'
+        model: 'auto'
+        # LibreChat can't look up "auto" and would fall back to 32k. 200k fits
+        # every tier model in litellm.yaml (the smallest window among them).
+        maxContextTokens: 200000
+
 # Example modelSpecs configuration showing grouping options
 # The 'group' field organizes model specs in the UI selector:
 # - If 'group' matches an endpoint name (e.g., "openAI", "groq"), the spec appears nested under that endpoint

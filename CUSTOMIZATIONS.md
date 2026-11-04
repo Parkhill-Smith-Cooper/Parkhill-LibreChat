@@ -53,6 +53,13 @@ Notable `librechat.yaml` settings we rely on:
   `https://parkhill.red/page/1725/policies-and-security`
 - `endpoints.agents.recursionLimit: 150` / `maxRecursionLimit: 300` — see §4.
 
+`litellm.yaml` (repo root, fork-only, secret-free) configures the LiteLLM sidecar
+behind the **"Auto"** entry in the model picker. `librechat.yaml` points a custom
+endpoint `LiteLLM` at `http://localhost:4000/v1` and surfaces it through a
+`modelSpecs` entry (`prioritize: false`, so users' last-used model is kept). Both files
+are uploaded to the `config` share by `parkhill-deploy.yml` and
+`scripts/update-librechat-config.ps1`. Upstream has no such file, so it cannot conflict.
+
 ### 3. Data layer
 - MongoDB is **external**: Azure Cosmos DB (Mongo vCore). `MONGO_URI` uses
   `retryWrites=false` (required for Cosmos).

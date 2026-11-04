@@ -27,6 +27,13 @@ Write-Host "==> Uploading librechat.yaml to share '$ShareName' on $StorageAccoun
 $key = az storage account keys list -g $ResourceGroup --account-name $StorageAccount --query "[0].value" -o tsv
 az storage file upload --account-name $StorageAccount --account-key $key --share-name $ShareName --source $ConfigPath | Out-Null
 
+# LiteLLM sidecar config ("Auto" model). Same share, read by the litellm container.
+$liteLlmPath = Join-Path (Split-Path $ConfigPath) 'litellm.yaml'
+if (Test-Path $liteLlmPath) {
+  Write-Host "==> Uploading litellm.yaml to share '$ShareName'" -ForegroundColor Cyan
+  az storage file upload --account-name $StorageAccount --account-key $key --share-name $ShareName --source $liteLlmPath | Out-Null
+}
+
 Write-Host "==> Restarting $AppName (latest revision)" -ForegroundColor Cyan
 $rev = az containerapp show -n $AppName -g $ResourceGroup --query "properties.latestRevisionName" -o tsv
 az containerapp revision restart --name $AppName -g $ResourceGroup --revision $rev | Out-Null

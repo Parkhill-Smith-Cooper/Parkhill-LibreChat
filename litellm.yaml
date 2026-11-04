@@ -1,0 +1,50 @@
+# LiteLLM proxy config for the "Auto" model in the LibreChat picker.
+#
+# Runs as the `litellm` sidecar container in ca-librechat, reading this file from
+# the Azure Files `config` share (/mnt/config/litellm.yaml). LibreChat reaches it at
+# http://localhost:4000/v1 through the `LiteLLM` custom endpoint in librechat.yaml.
+#
+# `auto` uses LiteLLM's complexity router: a local heuristic scores each prompt
+# (length, code, reasoning markers, multi-step patterns...) and picks a tier. No
+# embeddings or extra API calls are made to decide. The models behind each tier
+# are the same public provider APIs LibreChat already calls directly.
+#
+# Beta feature in LiteLLM (>= v1.94.0); keys may change between releases, so the
+# image tag is pinned. Docs: https://docs.litellm.ai/docs/proxy/auto_routing
+
+model_list:
+  - model_name: gpt-5.4-mini
+    litellm_params:
+      model: openai/gpt-5.4-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: claude-sonnet-5
+    litellm_params:
+      model: anthropic/claude-sonnet-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-opus-5
+    litellm_params:
+      model: anthropic/claude-opus-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-opus-5-5
+    litellm_params:
+      model: anthropic/claude-opus-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: auto
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        tiers:
+          SIMPLE: gpt-5.4-mini
+          MEDIUM: claude-sonnet-5
+          COMPLEX: claude-opus-5
+          REASONING: claude-opus-5-5
+      complexity_router_default_model: claude-sonnet-5
+
+litellm_settings:
+  # LibreChat sends OpenAI-style params (temperature, etc.) that some tier models
+  # reject; drop unsupported ones instead of failing the request.
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

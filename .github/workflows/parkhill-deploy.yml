@@ -69,14 +69,16 @@ jobs:
             --image "$IMAGE_REPO:latest" \
             --file Dockerfile .
 
-      - name: Upload librechat.yaml to Azure Files share
+      - name: Upload librechat.yaml and litellm.yaml to Azure Files share
         run: |
           KEY=$(az storage account keys list -g "$RESOURCE_GROUP" --account-name "$STORAGE_ACCOUNT" --query "[0].value" -o tsv)
-          az storage file upload \
-            --account-name "$STORAGE_ACCOUNT" \
-            --account-key "$KEY" \
-            --share-name "$CONFIG_SHARE" \
-            --source librechat.yaml
+          for f in librechat.yaml litellm.yaml; do
+            az storage file upload \
+              --account-name "$STORAGE_ACCOUNT" \
+              --account-key "$KEY" \
+              --share-name "$CONFIG_SHARE" \
+              --source "$f"
+          done
 
       - name: Deploy new image to Container App
         run: |
