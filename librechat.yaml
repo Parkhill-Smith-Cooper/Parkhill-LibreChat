@@ -991,12 +991,14 @@ endpoints:
   #     # Trace output is logged to application log files for compliance auditing
   #     trace: "enabled"
 modelSpecs:
-  # Keep users' last-used model on new chats; Auto is offered, not forced.
-  # (The default, true, would start every new chat on the first spec.)
-  prioritize: false
+  # Every new chat starts on Auto, regardless of the model picked last; users can
+  # still switch models from the picker within a chat. `default` alone does nothing
+  # unless `prioritize` is true (see client/src/hooks/useNewConvo.ts).
+  prioritize: true
   list:
     - name: 'auto'
       label: 'Auto'
+      default: true
       description: 'Picks a model for each message based on how complex it is'
       preset:
         endpoint: 'LiteLLM'

@@ -56,7 +56,8 @@ Notable `librechat.yaml` settings we rely on:
 `litellm.yaml` (repo root, fork-only, secret-free) configures the LiteLLM sidecar
 behind the **"Auto"** entry in the model picker. `librechat.yaml` points a custom
 endpoint `LiteLLM` at `http://localhost:4000/v1` and surfaces it through a
-`modelSpecs` entry (`prioritize: false`, so users' last-used model is kept). Both files
+`modelSpecs` entry (`prioritize: true` + `default: true`, so every new chat starts on
+Auto; users can still switch models within a chat). Both files
 are uploaded to the `config` share by `parkhill-deploy.yml` and
 `scripts/update-librechat-config.ps1`. Upstream has no such file, so it cannot conflict.
 
