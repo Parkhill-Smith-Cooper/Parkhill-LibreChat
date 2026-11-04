@@ -325,6 +325,19 @@ holds that credential (Container App secrets `pirros-api-client-id` and
 apart. The image is built by hand (see the folder's README); the release workflow does not
 rebuild it.
 
+### 10. User guide on GitBook (docs only)
+
+The end-user guide lives in `parkhill/user-guide/` and is published to GitBook with **Git Sync**
+(space project directory: `parkhill/user-guide`). It covers agents (create, share, Marketplace),
+the Projects picker and folders, MCP servers and skills. **No LibreChat source is touched.**
+
+- Don't use the root `docs/` folder: upstream owns it (`docs/permissions`, `run_files.md`, …), so
+  syncing GitBook there would mix our pages with theirs and invite merge conflicts.
+- Git Sync works in both directions. Edits made in the GitBook editor are committed to `main` by the
+  GitBook app, inside `parkhill/user-guide/` only. Pull before editing locally.
+- When a customization changes what users see (a new MCP server, a picker change), update the
+  matching page in the same commit.
+
 ---
 
 ## Things we must NOT do

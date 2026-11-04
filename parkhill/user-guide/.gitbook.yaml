@@ -1,0 +1,7 @@
+# GitBook Git Sync config. In GitBook, set the space's project directory
+# to parkhill/user-guide so it reads only this folder.
+root: ./
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
