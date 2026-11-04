@@ -16,6 +16,8 @@
 * [Projects](projects.md)
 * [Tools and MCP servers](mcp.md)
 * [Skills](skills.md)
+* [Image generation](images.md)
+* [Memories](memories.md)
 
 ## Help
 

@@ -32,6 +32,7 @@ They teach people how to use it, so add two or three.
 - **Artifacts** renders documents, diagrams and small apps beside the chat.
 - **MCP servers** connect outside systems. See [Tools and MCP servers](../mcp.md).
 - **Skills** give the agent reusable instruction packs. See [Skills](../skills.md).
+- **Image tools** let the agent create and edit images. See [Image generation](../images.md).
 
 **Advanced.** Includes **Max Agent Steps**, the number of steps (mostly tool calls) the agent may
 take in one answer. Raise it for agents that do long, multi-step tool work.
