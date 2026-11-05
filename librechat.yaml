@@ -448,7 +448,7 @@ mcpServers:
     headers:
       x-user-id: "{{LIBRECHAT_USER_EMAIL}}"
       x-parkhill-mcp-key: "${PARKHILL_MCP_KEY}"
-    timeout: 120000
+    timeout: 300000
   sketchup-mcp:
     # Same desktop connector and same backend as revit-mcp; the /mcp/sketchup
     # mount routes to appId=sketchup on the user's own workstation.
@@ -999,7 +999,6 @@ modelSpecs:
     - name: 'auto'
       label: 'Auto'
       default: true
-      description: 'Picks a model for each message based on how complex it is'
       preset:
         endpoint: 'LiteLLM'
         model: 'auto'
