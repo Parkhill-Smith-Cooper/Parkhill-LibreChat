@@ -127,9 +127,9 @@ gate, not just a hidden menu entry.
 - ❌ **Don't use `modelSpecs` for this.** `endpoints.custom` is in `ARRAY_MERGE_KEYS`
   (merged by `name`), so an override appends cleanly. `modelSpecs.list` is not, so an
   override would replace the whole array — you would have to duplicate every public spec
-  into the admin document and keep them in sync forever. There is no `modelSpecs:` block
-  in `librechat.yaml` today; the public list comes from `ANTHROPIC_MODELS` /
-  `OPENAI_MODELS` / `GOOGLE_MODELS` in `.env` plus the OpenRouter fetch.
+  into the admin document and keep them in sync forever. The only `modelSpecs` entry in
+  `librechat.yaml` is the public **Auto** spec (§2); the public model list comes from
+  `ANTHROPIC_MODELS` / `OPENAI_MODELS` / `GOOGLE_MODELS` in `.env` plus the OpenRouter fetch.
 
 **Gate a new model:** add its id to `models.default` in `scripts/admin-models.json`, keep
 it **out** of `ANTHROPIC_MODELS` in `.env`, then
@@ -345,6 +345,41 @@ the Projects picker and folders, MCP servers and skills. **No LibreChat source i
   GitBook app, inside `parkhill/user-guide/` only. Pull before editing locally.
 - When a customization changes what users see (a new MCP server, a picker change), update the
   matching page in the same commit.
+
+### 11. Auto chats billed under the model LiteLLM picked
+
+**Why.** Upstream tags token usage with the model LibreChat *requested*. For the Auto spec
+(§2) that is always `auto`, which has no rate, so every Auto call was written to
+`transactions` as `model: "auto"` at the default rate. Balances were wrong, and the Tech Hub's
+AI Usage page could not tie Auto calls to a provider or model.
+
+**How.**
+1. `litellm.yaml` sets `complexity_router_config.return_raw_model_name: true` (LiteLLM ≥ v1.99;
+   the sidecar is pinned to v1.106.6). The response's `model` is then the model that answered
+   (`claude-sonnet-5`, `gpt-5.4-mini`, …) instead of `auto`, on streaming chunks too.
+2. LangChain exposes that as `response_metadata.model_name`. `resolveRoutedModel()`
+   (`packages/api/src/parkhill/routedModel.ts`) swaps it into the usage for router aliases
+   only, so transactions, rates, balances and the per-call usage event all use the real
+   model. Rates come from the built-in tables; no `tokenConfig` is needed.
+3. Fail-open: no `model_name`, an echoed `auto`, or anything odd leaves the usage as before.
+   Messages keep `model: "auto"`; only usage is re-tagged.
+
+| Upstream touchpoint | Change |
+|---|---|
+| `api/server/controllers/agents/callbacks.js` | `resolveRoutedModel` added to the `@librechat/api` import, and one line after `contextualizeModelUsage(...)` in `ModelEndHandler.handle` |
+| `packages/api/src/parkhill/index.ts` | `export * from './routedModel';` (fork-only file) |
+
+The call is written `resolveRoutedModel?.(…) ?? taggedUsage` so upstream specs that mock
+`@librechat/api` without it keep passing. Guarded by
+`api/server/controllers/agents/__tests__/parkhillRoutedModel.spec.js` (fails if the line is
+dropped) and `packages/api/src/parkhill/routedModel.spec.ts`. On a merge conflict in
+`callbacks.js`, **keep ours**: re-add the one line after `contextualizeModelUsage`.
+
+**Config.** `PARKHILL_ROUTED_MODELS` (optional, comma list, default `auto`) names the router
+aliases to re-tag. If a new router alias is added to `litellm.yaml`, add it here too and set
+`return_raw_model_name: true` on it.
+
+**History.** Auto rows written before this change stay `model: "auto"`.
 
 ---
 

@@ -16,6 +16,7 @@ export * from './handlers';
 export * from './middleware';
 export * from './folders';
 export * from './downloads';
+export * from './routedModel';
 
 /**
  * Parkhill fork: wires the Fabric project list, the conversation-project store,

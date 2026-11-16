@@ -35,6 +35,7 @@ const {
   captureSubagentIdentity,
   collectToolCallIds,
   createToolTimingAdapter,
+  resolveRoutedModel,
 } = require('@librechat/api');
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
@@ -163,6 +164,7 @@ class ModelEndHandler {
         return;
       }
       let taggedUsage = contextualizeModelUsage(usage, metadata, agentContext);
+      taggedUsage = resolveRoutedModel?.(taggedUsage, data?.output) ?? taggedUsage; // Parkhill fork: CUSTOMIZATIONS.md §11
       /** Hidden intermediate sequential-agent calls are billed but never shown.
        *  Tag them non-primary on the COLLECTED usage too (not just the emit) so
        *  recordCollectedUsage excludes their output from the parent's tokenCount

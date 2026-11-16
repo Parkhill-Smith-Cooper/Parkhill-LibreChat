@@ -247,13 +247,14 @@ registration:
   - "parkhill.com"
 
 # Example Balance settings
-# balance:
-#   enabled: false
-#   startBalance: 20000
-#   autoRefillEnabled: false
-#   refillIntervalValue: 30
-#   refillIntervalUnit: 'days'
-#   refillAmount: 10000
+balance:
+  enabled: true
+  startBalance: 20000000         # credits each user starts with (1,000,000 = $1 USD)
+  autoRefillEnabled: true
+  refillIntervalValue: 1
+  refillIntervalUnit: 'days'   # seconds | minutes | hours | days | weeks | months
+  refillAmount: 20000000         # credits added each interval ($20/day)
+
 
 # Example Transactions settings
 # Controls whether to save transaction records to the database

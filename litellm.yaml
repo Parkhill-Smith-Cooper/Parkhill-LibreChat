@@ -39,6 +39,10 @@ model_list:
           MEDIUM: claude-sonnet-5
           COMPLEX: claude-opus-5
           REASONING: claude-opus-5-5
+        # Put the model that answered in the response's `model` field (instead of
+        # "auto"), so LibreChat bills Auto chats under the real model.
+        # See CUSTOMIZATIONS.md §11.
+        return_raw_model_name: true
       complexity_router_default_model: claude-sonnet-5
 
 litellm_settings:
