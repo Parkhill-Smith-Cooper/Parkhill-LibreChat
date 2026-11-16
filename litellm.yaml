@@ -52,3 +52,7 @@ litellm_settings:
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
+  # LibreChat does not request stream usage from custom endpoints, and LiteLLM
+  # otherwise strips it from the stream. Without usage, LibreChat estimates tokens
+  # and bills them as "auto". See CUSTOMIZATIONS.md §11.
+  always_include_stream_usage: true

@@ -361,7 +361,12 @@ AI Usage page could not tie Auto calls to a provider or model.
    (`packages/api/src/parkhill/routedModel.ts`) swaps it into the usage for router aliases
    only, so transactions, rates, balances and the per-call usage event all use the real
    model. Rates come from the built-in tables; no `tokenConfig` is needed.
-3. Fail-open: no `model_name`, an echoed `auto`, or anything odd leaves the usage as before.
+3. `litellm.yaml` sets `general_settings.always_include_stream_usage: true`. LibreChat turns
+   `streamUsage` off for custom endpoints (`packages/api/src/agents/run.ts`), so it never asks
+   for usage, and LiteLLM strips usage from the stream unless asked. Without usage,
+   `ModelEndHandler` returns before step 2 and `BaseClient` falls back to estimated tokens
+   billed as `auto`.
+4. Fail-open: no `model_name`, an echoed `auto`, or anything odd leaves the usage as before.
    Messages keep `model: "auto"`; only usage is re-tagged.
 
 | Upstream touchpoint | Change |
