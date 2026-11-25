@@ -228,7 +228,7 @@ error means a permissions problem, not a network one.
 
 **New files (no conflicts):**
 - `packages/api/src/parkhill/` (Fabric source and cache, store, middleware, handler, tests)
-- `api/server/routes/parkhill.js`
+- `api/server/routes/parkhill.js` (routes) and `api/server/services/Parkhill.js` (the shared service instances)
 - `client/src/components/Parkhill/` (picker, Jotai state, query, tests)
 
 **Upstream files touched (check these when merging):**
@@ -238,9 +238,9 @@ error means a permissions problem, not a network one.
 | `packages/api/src/index.ts` | `export * from './parkhill'` |
 | `packages/api/package.json` + `package-lock.json` | `mssql`, `@types/mssql`. On a lock conflict, take upstream's lock and re-run `npm install`. |
 | `api/server/index.js` | mounts `/api/parkhill` |
-| `api/server/routes/agents/chat.js` | `router.use(captureConversationProject)` just before `buildEndpointOption`. It must stay **before** it: the middleware removes the `parkhillProject` field from the body. |
-| `client/src/components/Chat/Input/ChatForm.tsx` | `useProjectGate(index === 0, isNewConversation, project?._id)`, the picker below the composer surface, and `projectGate.blocked` on the Send button |
-| `client/src/hooks/Chat/useChatFunctions.ts` | `getParkhillProjectField()` in `ask()`: refuses the send while a choice is required, and adds `parkhillProject` to `endpointOption` |
+| `api/server/routes/agents/chat.js` | requires `{ parkhill }` from `~/server/services/Parkhill` (fork-only; builds the services without auth imports) and adds `router.use(parkhill.captureConversationProject)` just before `buildEndpointOption`. It must stay **before** it: the middleware removes the `parkhillProject` field from the body. Do not import it from `routes/parkhill.js`: that pulls `requireJwtAuth` and the config chain into upstream's route specs and breaks them. |
+| `client/src/components/Chat/Input/ChatForm.tsx` | `useProjectGate(index === 0, isNewConversation, project?._id)` after `isNewConversation`; `projectGate.blocked` in the `sendDisabled` of the `actionSlot` `useMemo` **and** in its dependency list; `<ProjectGate>` rendered first inside `ComposerFrame`'s `hints` slot (directly under the composer surface) |
+| `client/src/hooks/Chat/useChatFunctions.ts` | Since v0.8.9, `ask()` lives in `@librechat/chat` (`useTurns`) and this file is a thin wrapper. The hook stays in the wrapper, so no `packages/chat` file is touched: `canSubmit` on the turn services refuses a new chat's send (Send button **and** Enter) while a choice is required, and a wrapped `setSubmission` adds `parkhillProject` to `endpointOption`. Guarded by `client/src/components/Parkhill/__tests__/useChatFunctions.spec.tsx` |
 | `client/src/locales/en/translation.json` | `com_parkhill_*` keys |
 
 **How it works:**
@@ -290,7 +290,7 @@ blocks the download. These are **not** captured:
 - `client/src/components/Parkhill/downloads.ts`, plus `__tests__/downloads.spec.ts` and
   `__tests__/ImageDownload.spec.tsx`
 
-**Fork files touched:** `packages/api/src/parkhill/index.ts` and `api/server/routes/parkhill.js`.
+**Fork files touched:** `packages/api/src/parkhill/index.ts` and `api/server/services/Parkhill.js` (builds the downloads service) and `api/server/routes/parkhill.js`.
 The route rides on the existing `/api/parkhill` mount, so `api/server/index.js` has no new edit.
 
 **Upstream files touched (check these when merging):**
@@ -300,7 +300,9 @@ The route rides on the existing `/api/parkhill` mount, so `api/server/index.js` 
 | `client/src/components/Chat/Messages/Content/Image.tsx` | Import `recordImageDownload` and call `recordImageDownload(imagePath)` as the first line of `downloadImage`. If upstream moves or renames the download function, put the call back in it. |
 
 `client/src/components/Parkhill/__tests__/ImageDownload.spec.tsx` renders the real `Image`
-and fails if a merge drops this line. **Do not delete it to make a merge go green.**
+and fails if a merge drops this line. **Do not delete it to make a merge go green.** It mocks
+`DialogImage`, which v0.8.9 moved to `@librechat/chat/components`; if upstream moves it again,
+update the mock, not the assertion.
 
 ### 8. Tech Hub MCP server (config only)
 
@@ -375,7 +377,11 @@ AI Usage page could not tie Auto calls to a provider or model.
 | `packages/api/src/parkhill/index.ts` | `export * from './routedModel';` (fork-only file) |
 
 The call is written `resolveRoutedModel?.(…) ?? taggedUsage` so upstream specs that mock
-`@librechat/api` without it keep passing. Guarded by
+`@librechat/api` without it keep passing. The guard spec mocks `@librechat/api` too and must
+pass through every real helper `ModelEndHandler.handle` uses before it reaches our line
+(`getModelEndUsage`, `captureResponseAccountingUsage`, …). When upstream adds one, the handler
+throws inside its own `try`, records nothing, and the spec fails with an empty
+`collectedUsage`: add the helper to the mock. Guarded by
 `api/server/controllers/agents/__tests__/parkhillRoutedModel.spec.js` (fails if the line is
 dropped) and `packages/api/src/parkhill/routedModel.spec.ts`. On a merge conflict in
 `callbacks.js`, **keep ours**: re-add the one line after `contextualizeModelUsage`.
@@ -414,6 +420,33 @@ git checkout main
 git merge upstream/main      # branding assets + the §4 client files can conflict → keep ours
 git push origin main
 ```
+
+To take a specific release rather than whatever `upstream/main` holds, merge its tag on a
+branch: `./scripts/update-from-upstream.ps1 -Ref v0.8.9` (that is how v0.8.9 came in, on
+`merge/v0.8.9`). After a merge:
+
+- Validate `librechat.yaml` against the new schema and bump its `version:` to upstream's
+  `CONFIG_VERSION` (`packages/data-provider/src/config.ts`).
+- Run the guard specs: `client` → `src/components/Parkhill` and `Error.spec`;
+  `packages/api` → `src/parkhill`; `api` → `parkhillRoutedModel`.
+- Read upstream's `UPGRADING.md` diff for migrations to run after deploy.
+
+**Windows-only test gotcha.** If client specs fail en masse with
+`Cannot read properties of null (reading 'useContext')`, two copies of React are loading: the
+`node_modules/@librechat/chat` workspace link resolves through `d:\…` while Jest's `rootDir`
+is `D:\…`. It is a local path-casing problem, not a merge problem; CI on Linux is unaffected.
+The same split hits a local `node api/server/index.js` started from a `d:\` working directory:
+mongoose loads twice and v0.8.9 logs `[agent-triggers] … Checkpoint database is unavailable`.
+Start it from `D:\` and the error is gone. For Jest, the verified workaround is a throwaway config that spreads `client/jest.config.cjs`, sets
+`rootDir` to the `D:/…/client` path and adds
+`'^@librechat/chat/(.*)$': '<rootDir>/../packages/chat/dist/$1.cjs'` to `moduleNameMapper`.
+
+### v0.8.9 notes
+- `ask()` and the composer moved into upstream's `packages/chat`; the §6 hooks were re-applied
+  in the client-side wrappers listed above.
+- After deploying, run `npm run migrate:search-tokens:dry-run`, then `npm run migrate:search-tokens`
+  against production (people-picker search; online and idempotent).
+- The DALL-E 3 tool was retired upstream; `DALLE_*` env vars are no longer read.
 
 If a conflict appears on a branding asset, keep ours:
 ```powershell

@@ -18,9 +18,8 @@ jest.mock('@librechat/client', () => ({
   Skeleton: () => null,
 }));
 
-jest.mock('~/components/Chat/Messages/Content/DialogImage', () => ({
-  __esModule: true,
-  default: ({ isOpen, downloadImage }: { isOpen: boolean; downloadImage: () => void }) =>
+jest.mock('@librechat/chat/components', () => ({
+  DialogImage: ({ isOpen, downloadImage }: { isOpen: boolean; downloadImage: () => void }) =>
     isOpen ? <button type="button" aria-label="download" onClick={() => downloadImage()} /> : null,
 }));
 

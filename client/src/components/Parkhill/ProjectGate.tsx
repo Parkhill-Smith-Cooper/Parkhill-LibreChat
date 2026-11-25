@@ -131,12 +131,12 @@ export default function ProjectGate({ gate }: { gate: ProjectGateState }) {
       {
         value: NO_PROJECT,
         label: localize('com_parkhill_no_project'),
-        icon: <Ban className="h-4 w-4 text-text-secondary" aria-hidden="true" />,
+        icon: <Ban className="text-text-secondary h-4 w-4" aria-hidden="true" />,
       },
       ...gate.projects.map((project) => ({
         value: project.number,
         label: projectLabel(project),
-        icon: <Briefcase className="h-4 w-4 text-text-secondary" aria-hidden="true" />,
+        icon: <Briefcase className="text-text-secondary h-4 w-4" aria-hidden="true" />,
       })),
     ],
     [gate.projects, localize],
@@ -181,7 +181,7 @@ export default function ProjectGate({ gate }: { gate: ProjectGateState }) {
             setChoice(project);
           }
         }}
-        SelectIcon={<Briefcase className="h-3.5 w-3.5 text-text-secondary" aria-hidden="true" />}
+        SelectIcon={<Briefcase className="text-text-secondary h-3.5 w-3.5" aria-hidden="true" />}
         ariaLabel={localize('com_parkhill_choose_project')}
         ariaInvalid={prompt && choice == null}
         ariaDescribedBy={help ? HELP_ID : undefined}
@@ -192,9 +192,9 @@ export default function ProjectGate({ gate }: { gate: ProjectGateState }) {
         gutter={6}
         matchTriggerWidth={true}
         unsearchedLimit={50}
-        containerClassName="w-full min-w-0 px-0"
-        className="h-11 w-full gap-2 rounded-2xl border border-border-light bg-surface-secondary px-4 text-sm font-medium text-text-primary hover:bg-surface-hover"
-        popoverClassName="rounded-2xl shadow-xl"
+        variant="field"
+        containerClassName="w-full min-w-0"
+        className="h-11 w-full"
       />
       {help || gate.unavailable ? (
         <div className="flex flex-wrap items-center gap-2 px-2">
@@ -203,7 +203,7 @@ export default function ProjectGate({ gate }: { gate: ProjectGateState }) {
               id={HELP_ID}
               role="status"
               aria-live="polite"
-              className={help.warn ? 'text-xs text-text-warning' : 'text-xs text-text-secondary'}
+              className={help.warn ? 'text-text-warning text-xs' : 'text-text-secondary text-xs'}
             >
               {help.text}
             </span>
@@ -212,7 +212,7 @@ export default function ProjectGate({ gate }: { gate: ProjectGateState }) {
             <button
               type="button"
               onClick={gate.retry}
-              className="rounded-full px-2 py-1 text-xs text-text-secondary outline-none hover:bg-surface-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-text-primary"
+              className="text-text-secondary hover:bg-surface-hover hover:text-text-primary focus-visible:ring-text-primary rounded-full px-2 py-1 text-xs outline-none focus-visible:ring-2"
             >
               {localize('com_ui_retry')}
             </button>
