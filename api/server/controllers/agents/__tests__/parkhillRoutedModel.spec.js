@@ -7,14 +7,17 @@ jest.mock('@librechat/data-schemas', () => ({
   logger: { error: jest.fn(), debug: jest.fn(), warn: jest.fn() },
 }));
 jest.mock('@librechat/api', () => {
-  const { getModelRefusalInfo, resolveRoutedModel } = jest.requireActual('@librechat/api');
+  const actual = jest.requireActual('@librechat/api');
   return {
     sendEvent: jest.fn(),
     emitEvent: jest.fn(),
     createToolExecuteHandler: jest.fn(),
     markSummarizationUsage: (usage) => usage,
-    getModelRefusalInfo,
-    resolveRoutedModel,
+    getModelRefusalInfo: actual.getModelRefusalInfo,
+    getModelEndUsage: actual.getModelEndUsage,
+    collectGoogleThoughtSignatures: actual.collectGoogleThoughtSignatures,
+    captureResponseAccountingUsage: actual.captureResponseAccountingUsage,
+    resolveRoutedModel: actual.resolveRoutedModel,
   };
 });
 jest.mock('~/server/services/Files/Citations', () => ({
